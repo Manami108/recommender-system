@@ -1,0 +1,55 @@
+1. Multi-objective Loss Function
+
+✅ In normal KG embedding, you minimize:
+
+Link prediction loss (like margin ranking loss)
+
+✅ In creativity-enhanced KG embedding, you can add:
+
+Total Loss = Link prediction loss + α × Diversity encouragement loss
+
+Where Diversity Encouragement Loss can be:
+
+    Encourage embedding neighbors from different topics (different Field of Study / BERTopic label).
+
+    Penalty if all neighbors are from the same topic (overfitting).
+
+🎯 (Small trick): You can use topic label embeddings (from BERTopic) and maximize topic distance among neighbors.
+2. Neighborhood Regularization
+
+✅ Regularize the node's neighborhood embedding to encourage heterogeneous neighborhoods.
+
+    Standard GNNs aggregate neighbors equally.
+
+    You can modify the aggregation so that different types (topics, FOS) get more weight.
+
+🎯 Maybe use attention that boosts different-topic neighbors.
+
+Example:
+
+    If Paper A and Paper B are both GNN papers, but Paper C is about Graph Pretraining, give extra attention to C if slightly relevant.
+
+3. Contrastive Learning with Negative Sampling
+
+✅ Train your KG embedding to:
+
+    Pull semantically meaningful neighbors together.
+
+    Push away unrelated boring ones.
+
+BUT importantly:
+
+    Sample hard negatives: papers that are slightly related but not identical.
+
+🎯 (Trick): Use SciBERT cosine similarity to find soft negatives — not random, but near your domain.
+4. Semantic Drift Encouragement
+
+✅ Design the model to allow semantic drift across hops.
+
+    Normally embeddings want 1-hop and 2-hop neighbors to be very close.
+
+    You allow a controlled drift — so that 2-hop neighbors can innovate, not stay in the same subfield.
+
+🎯 You can define a semantic drift score:
+
+    E.g., how much topic change occurs between nodes, and maximize it in some paths.

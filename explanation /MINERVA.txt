@@ -1,0 +1,22 @@
+🧠 Is building MINERVA "creating model from scratch"?
+
+🔵 Short answer:
+
+    Not exactly creating the MINERVA concept from scratch (the idea of graph walking agent already exists)
+
+    Yes, you are implementing a new lightweight version of MINERVA agent, specifically for your own knowledge graph.
+
+    You are writing your own small system based on the MINERVA principle.
+
+
+Bonus: If you want even stronger multi-level reasoning
+
+You can make the system decide dynamically:
+
+    Should I follow a KG relation?
+
+    Should I jump based on text similarity?
+
+    Should I do both?
+
+(This is how state-of-the-art neural-symbolic systems like NeuralLP, DRUM, TACRED+Transformer, etc., do.)
