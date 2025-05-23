@@ -1,0 +1,197 @@
+This is how to use neo4j
+
+0. run the following command to make sure the neo4j is stopped. 
+sudo -u neo4j neo4j stop
+
+1. run neo4j.py -> it will create csv file in this folder
+
+2. run the following command in the terminal to move the csv file into neo4j.
+sudo cp /media/e-soc-student/DISK2/GR/GR2_Recommendation/export_csv/*.csv /var/lib/neo4j/import/
+ 
+3. run the following command to remove all previous databsase from neo4j 
+sudo -u neo4j rm -rf /var/lib/neo4j/data/databases/neo4j
+
+
+4. run the following command to import
+cd /var/lib/neo4j/import
+sudo -u neo4j neo4j-admin database import full neo4j \
+  --nodes=Paper="paper_nodes_merged.csv" \
+  --nodes=Topic="topic_nodes.csv" \
+  --nodes=FieldOfStudy="fos_nodes.csv" \
+  --relationships=CITES="paper_cites_paper.csv" \
+  --relationships=HAS_TOPIC="paper_has_topic.csv" \
+  --relationships=HAS_FOS="paper_has_fos.csv" \
+  --delimiter="," \
+  --array-delimiter=";" \
+  --skip-bad-entries-logging=false \
+  --verbose \
+  --overwrite-destination=true
+
+
+5. run the following command to start neo4j 
+sudo -u neo4j neo4j start
+
+6. visit to the neo4j
+http://localhost:7474
+
+7. run the following Cypher queries onve to create indexes 
+
+CREATE CONSTRAINT paper_id IF NOT EXISTS
+FOR (p:Paper) REQUIRE p.id IS UNIQUE;
+
+CREATE CONSTRAINT topic_idx IF NOT EXISTS
+FOR (t:Topic) REQUIRE t.idx IS UNIQUE;
+
+CREATE CONSTRAINT fos_idx IF NOT EXISTS
+FOR (f:FieldOfStudy) REQUIRE f.idx IS UNIQUE;
+
+CREATE VECTOR INDEX paper_vec IF NOT EXISTS
+FOR (p:Paper) ON (p.embedding)
+OPTIONS {
+  indexConfig: {
+    `vector.dimensions`: 768,
+    `vector.similarity_function`: 'cosine'
+  }
+};
+
+CREATE VECTOR INDEX topic_vec IF NOT EXISTS
+FOR (t:Topic) ON (t.embedding)
+OPTIONS {
+  indexConfig: {
+    `vector.dimensions`: 768,
+    `vector.similarity_function`: 'cosine'
+  }
+};
+
+CREATE VECTOR INDEX fos_vec IF NOT EXISTS
+FOR (f:FieldOfStudy) ON (f.embedding)
+OPTIONS {
+  indexConfig: {
+    `vector.dimensions`: 768,
+    `vector.similarity_function`: 'cosine'
+  }
+};
+
+CREATE VECTOR INDEX paper_struct_vec IF NOT EXISTS
+FOR (p:Paper) ON (p.n2v)
+OPTIONS {
+  indexConfig:{
+    `vector.dimensions`:128,
+    `vector.similarity_function`:'cosine'
+  }
+};
+
+
+SHOW INDEXES;
+
+// total counts
+CALL {
+  RETURN count { MATCH ()-[r:CITES]->() RETURN r } AS cites
+}
+CALL {
+  RETURN count { MATCH ()-[r:HAS_TOPIC]->() RETURN r } AS hasTopic
+}
+CALL {
+  RETURN count { MATCH ()-[r:HAS_FOS]->() RETURN r } AS hasFos
+}
+CALL {
+  RETURN count { MATCH (p:Paper) RETURN p } AS papers
+}
+CALL {
+  RETURN count { MATCH (t:Topic) RETURN t } AS topics
+}
+CALL {
+  RETURN count { MATCH (f:FieldOfStudy) RETURN f } AS fields
+}
+RETURN cites, hasTopic, hasFos, papers, topics, fields;
+
+
+MATCH (p:Paper) WHERE p.embedding IS NOT NULL
+RETURN p.id, size(p.embedding) AS dim LIMIT 5;
+
+MATCH (t:Topic) WHERE t.embedding IS NOT NULL
+RETURN t.idx, size(t.embedding) LIMIT 5;
+
+MATCH (f:FieldOfStudy) WHERE f.embedding IS NOT NULL
+RETURN f.idx, size(f.embedding) LIMIT 5;
+
+SHOW INDEXES YIELD name, type, entityType, state, populationPercent
+WHERE type = 'VECTOR'
+RETURN *;
+
+// use one paper’s embedding to query nearest neighbours
+MATCH (p:Paper) WHERE p.embedding IS NOT NULL
+WITH p, p.embedding AS vec
+LIMIT 1
+CALL db.index.vector.queryNodes('paper_vec', 5, vec)
+YIELD node, score
+RETURN node.title, score;
+
+// one paper
+MATCH (p:Paper) RETURN p.id, left(p.title,80) AS title,
+                       size(p.embedding) AS dim  LIMIT 3;
+
+// one topic
+MATCH (t:Topic) RETURN t.idx, t.topic_id, t.keywords,
+                       size(t.embedding) AS dim  LIMIT 3;
+
+// one FoS
+MATCH (f:FieldOfStudy) RETURN f.idx, f.name,
+                       size(f.embedding) AS dim  LIMIT 3;s
+
+SHOW INDEXES YIELD name, type, entityType, state, populationPercent
+WHERE type = 'VECTOR'
+RETURN *;
+
+MATCH (p:Paper) WHERE p.embedding IS NOT NULL
+WITH p, p.embedding AS vec
+LIMIT 1
+CALL db.index.vector.queryNodes('paper_vec', 5, vec)
+YIELD node, score
+RETURN node.title, score;
+
+// one topic
+MATCH (t:Topic) RETURN t.idx, t.topic_id, t.keywords,
+                       size(t.embedding) AS dim  LIMIT 3;
+
+// one FoS
+MATCH (f:FieldOfStudy) RETURN f.idx, f.name,
+                       size(f.embedding) AS dim  LIMIT 10;
+
+// any CITES edge without a target paper? this should return 0
+MATCH (:Paper)-[r:CITES]->(q)
+WHERE NOT (q:Paper)
+RETURN count(r) AS brokenCites;  
+
+// verify a HAS_TOPIC edge shows correct keywords
+MATCH (p:Paper)-[:HAS_TOPIC]->(t:Topic)
+RETURN left(p.title,60) AS paper, t.keywords  LIMIT 5;
+
+// has fos of machine learning
+MATCH (p:Paper)-[:HAS_FOS]->(f:FieldOfStudy)
+WHERE toLower(f.name) CONTAINS 'machine learning'
+RETURN p.title, p.year
+ORDER BY p.year DESC
+LIMIT 10;
+
+// find recent survey papers whose topic keywords mention 'knowledge graph'
+MATCH (p:Paper)-[:HAS_TOPIC]->(t:Topic)
+WHERE toLower(t.keywords) CONTAINS 'image'
+RETURN p.title, p.year
+ORDER BY p.year DESC LIMIT 10;
+
+// to check nodes, 
+MATCH (n) RETURN n LIMIT 50;
+
+// confirm every Paper has a 128-dim n2v array
+MATCH (p:Paper) WHERE p.n2v IS NOT NULL
+RETURN count(p) AS withN2V, size(p.n2v) AS dim LIMIT 1;
+
+MATCH (seed:Paper {id: "2507805920"})
+WITH seed
+CALL db.index.vector.queryNodes('paper_struct_vec', 10, seed.n2v)
+YIELD node, score
+RETURN node.id, node.title, 1 - score AS sim
+ORDER BY sim DESC
+LIMIT 10;
+
