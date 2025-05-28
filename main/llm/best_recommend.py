@@ -1,223 +1,226 @@
 #!/usr/bin/env python
+# Hybrid Paper Recommender (rank-based fusion)
 
-# text ANN  (paper_vec, SciBERT)
-# graph keyword/FoS  (Cypher)
-# structural ANN  (paper_struct_vec, Node2Vec)
-# soft paper_type boost, duplicate bonus
-# final top-10 with scores and source flags
-
-import os, re, json, ast, argparse, warnings, pandas as pd, torch
+import os, re, json, ast, argparse, warnings, math, pandas as pd, torch
 from neo4j import GraphDatabase
 from sentence_transformers import SentenceTransformer
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
-# Neo4j driver
+# ─────────── Parameters ────────────────────────────────────────
+TOP_N = 50          # how many candidates to take from EACH branch
+RRF_K = 60          # constant in Reciprocal-Rank Fusion  (larger ⇒ smoother)
+
+# ─────────── Connections ───────────────────────────────────────
 driver = GraphDatabase.driver(
-    os.getenv("NEO4J_URI","bolt://localhost:7687"),
-    auth=(os.getenv("NEO4J_USER","neo4j"), os.getenv("NEO4J_PASS","Manami1008"))
+    os.getenv("NEO4J_URI",  "bolt://localhost:7687"),
+    auth=(os.getenv("NEO4J_USER", "neo4j"),
+          os.getenv("NEO4J_PASS", "Manami1008"))
 )
 
-# SciBERT embedder (text ANN) 
 print("▶ Loading SciBERT …")
 sci_model = SentenceTransformer("allenai/scibert_scivocab_uncased")
 sci_model.eval()
-embed = lambda txt: sci_model.encode(txt, convert_to_numpy=True,
-                                     normalize_embeddings=True).tolist()
+embed = lambda txt: sci_model.encode(
+    txt, convert_to_numpy=True, normalize_embeddings=True
+).tolist()
 
-def vector_top25(qvec):
+# ─────────── ANN : text embedding branch ───────────────────────
+def vector_topN(qvec, n=TOP_N):
     with driver.session() as s:
-        rows = s.run("""
-          CALL db.index.vector.queryNodes('paper_vec', 25, $q)
-          YIELD node, score RETURN node.id AS id, score ORDER BY score
-        """, q=qvec).data()
-    return [{"id":r["id"], "sim":1-r["score"], "source_vec":True} for r in rows]
+        rows = s.run(
+            """
+            CALL db.index.vector.queryNodes('paper_vec', $n, $q)
+            YIELD node, score
+            RETURN node.id AS id, score
+            ORDER BY score
+            """,
+            q=qvec, n=n
+        ).data()
+    return [{"id": r["id"], "rank_vec": i}           # store rank (0-based)
+            for i, r in enumerate(rows)]
 
+# ─────────── Graph branch (Topic / FoS coverage) ───────────────
+# ─────────── Graph branch (Topic / FoS coverage) ───────────────
+# Improved multi-stage concept → Topic/FoS matcher
+#   • stage-1: high-confidence ANN  (≥ SIM_HI)
+#   • stage-2: lower-confidence ANN (≥ SIM_LO, take TOP_K_LO per concept)
+#   • stage-3: lexical fallback     (substring match on labels)
 
-# Node2Vec structural ANN (new)
-import math
+SIM_HI      = 0.50          # high-confidence threshold
+SIM_LO      = 0.30          # lower-confidence threshold
+TOP_K_LO    = 2             # neighbours per concept in stage-2
+MIN_HITS    = 3             # stop once we have this many IDs
 
-def struct_top15(seed_ids, k=15):
-    """Try each candidate id until we find a non-zero n2v vector."""
+def ann_nearest(kind: str, vec, k: int):
+    """kind ∈ {'topic','fos'}  – return list[(idx, sim)] length ≤ k."""
+    index = "topic_vec" if kind == "topic" else "fos_vec"
+    q = f"""
+        CALL db.index.vector.queryNodes('{index}', $k, $v)
+        YIELD node, score
+        RETURN node.idx AS idx, score
+    """
+    rows = driver.session().run(q, k=k, v=vec).data()
+    return [(int(r["idx"]), 1 - r["score"]) for r in rows]
+
+def lexical_candidates(term: str):
+    """Fallback substring match against KG labels – returns two ID sets."""
+    term_lc = term.lower()
+    q = """
+    MATCH (x)
+    WHERE   (x:Topic        AND toLower(x.keywords) CONTAINS $t)
+        OR  (x:FieldOfStudy AND toLower(x.name)     CONTAINS $t)
+    RETURN labels(x)[0] AS kind, x.idx AS idx
+    LIMIT 10
+    """
+    out_topic, out_fos = set(), set()
+    for r in driver.session().run(q, t=term_lc):
+        if r["kind"] == "Topic":
+            out_topic.add(int(r["idx"]))
+        else:
+            out_fos.add(int(r["idx"]))
+    return out_topic, out_fos
+
+def build_id_lists(concepts):
+    topic_ids, fos_ids = set(), set()
+
+    # ── Stage 1: high-confidence ANN ──
+    for c in concepts:
+        if not isinstance(c, str) or len(c.split()) < 2:
+            continue
+        vec = embed(c)
+        best = ann_nearest("topic", vec, 1) + ann_nearest("fos", vec, 1)
+        if best:
+            idx, sim = max(best, key=lambda t: t[1])
+            if sim >= SIM_HI:
+                if idx == best[0][0]:
+                    topic_ids.add(idx)
+                else:
+                    fos_ids.add(idx)
+
+    if len(topic_ids) + len(fos_ids) >= MIN_HITS:
+        return list(topic_ids), list(fos_ids)
+
+    # ── Stage 2: lower-confidence ANN ──
+    for c in concepts:
+        vec = embed(c)
+        for idx, sim in ann_nearest("topic", vec, TOP_K_LO):
+            if sim >= SIM_LO:
+                topic_ids.add(idx)
+        for idx, sim in ann_nearest("fos", vec, TOP_K_LO):
+            if sim >= SIM_LO:
+                fos_ids.add(idx)
+
+    if len(topic_ids) + len(fos_ids) >= MIN_HITS:
+        return list(topic_ids), list(fos_ids)
+
+    # ── Stage 3: lexical fallback ──
+    for c in concepts:
+        t_ids, f_ids = lexical_candidates(c)
+        topic_ids.update(t_ids)
+        fos_ids.update(f_ids)
+
+    return list(topic_ids), list(fos_ids)
+# ─────────── end of matcher replacement ───────────────────────
+
+CYPHER_GRAPH = """
+MATCH (p:Paper)
+OPTIONAL MATCH (p)-[:HAS_TOPIC]->(t:Topic) WHERE t.idx IN $topicIds
+OPTIONAL MATCH (p)-[:HAS_FOS]->(f:FieldOfStudy) WHERE f.idx IN $fosIds
+WITH p, count(DISTINCT t)+count(DISTINCT f) AS hits
+WHERE hits>0
+RETURN p.id AS id, hits
+ORDER BY hits DESC, p.year DESC
+LIMIT $n
+"""
+
+def graph_topN(topicIds, fosIds, n=TOP_N):
+    if not topicIds and not fosIds:
+        return []
     with driver.session() as s:
-        for pid in seed_ids:
-            rec = s.run("MATCH (p:Paper {id:$pid}) RETURN p.n2v AS v", pid=pid).single()
-            vec = rec and rec["v"]
-            if not vec:                       # null property
-                continue
-            if isinstance(vec, str):         # if imported as string "0;0;…"
-                vec = [float(x) for x in vec.split(";")]
-            if math.isfinite(sum(vec)) and any(abs(x) > 1e-6 for x in vec):
-                rows = s.run("""
-                  CALL db.index.vector.queryNodes('paper_struct_vec', $k, $v)
-                  YIELD node, score
-                  RETURN node.id AS id, score ORDER BY score
-                """, k=k, v=vec).data()
-                return [{"id":r["id"], "sim_struct":1-r["score"], "source_struct":True}
-                        for r in rows]
-    return []   # all candidates had zero vec
+        rows = s.run(
+            CYPHER_GRAPH, topicIds=topicIds, fosIds=fosIds, n=n
+        ).data()
+    return [{"id": r["id"], "rank_graph": i} for i, r in enumerate(rows)]
 
-#  Fuzzy concept → Topic / FoS mapping via vector ANN
-SIM_THRESHOLD = 0.50   # minimum cosine-similarity to accept a match
-
-def nearest_topic_fos(term: str):
-    """Return ('topic', idx) or ('fos', idx) if similarity ≥ threshold; else (None,None)."""
-    vec = embed(term)                                   # 768-d paragraph encoder
-    with driver.session() as s:
-        t = s.run("""
-            CALL db.index.vector.queryNodes('topic_vec', 1, $v)
-            YIELD node, score RETURN node.idx AS idx, score
-        """, v=vec).single()
-        f = s.run("""
-            CALL db.index.vector.queryNodes('fos_vec', 1, $v)
-            YIELD node, score RETURN node.idx AS idx, score
-        """, v=vec).single()
-
-    cand = []
-    if t: cand.append(("topic", 1 - t["score"], int(t["idx"])))
-    if f: cand.append(("fos",   1 - f["score"], int(f["idx"])))
-    if not cand:         return None, None
-    kind, sim, idx = max(cand, key=lambda x: x[1])
-    if sim < SIM_THRESHOLD:  return None, None
-    return kind, idx
-
-# LLaMA concept extracter (chypher query)
-MODEL_ID="meta-llama/Llama-3.1-8B-Instruct"
+# ─────────── LLaMA concept extractor ───────────────────────────
+MODEL_ID = "meta-llama/Llama-3.1-8B-Instruct"
 print("▶ Loading LLaMA-8B …")
-llm = pipeline("text-generation",
+llm = pipeline(
+    "text-generation",
     model=AutoModelForCausalLM.from_pretrained(
         MODEL_ID, device_map="auto", torch_dtype=torch.float16),
     tokenizer=AutoTokenizer.from_pretrained(MODEL_ID)
 )
-PROMPT = """You are an academic assistant… JSON: {{"concepts":["x"],"paper_type":"survey"}} <TEXT>{paragraph}</TEXT>"""
 
-def llm_extract(paragraph:str):
-    out = llm(PROMPT.format(paragraph=paragraph.strip()),
-              max_new_tokens=256,temperature=0.0,do_sample=False)[0]["generated_text"]
+# escape braces inside the JSON template ({{ }})
+PROMPT = (
+    "You are an academic assistant.\n"
+    "Extract 3–7 salient research concepts from <TEXT> and return JSON in the form:\n"
+    "{{\"concepts\": [\"...\"]}}\n"
+    "<TEXT>{paragraph}</TEXT>"
+)
+
+def llm_extract(paragraph: str):
+    query = PROMPT.format(paragraph=paragraph.strip())     # now safe
+    out = llm(query, max_new_tokens=128,
+              temperature=0.0, do_sample=False)[0]["generated_text"]
     for chunk in re.findall(r"\{[^{}]+\}", out, re.S):
         for loader in (json.loads, ast.literal_eval):
             try:
                 d = loader(chunk)
-                if "concepts" in d and "paper_type" in d: return d
-            except: pass
-    raise ValueError("LLM output unparsable:\n"+out)
+                if "concepts" in d:
+                    return d
+            except Exception:
+                pass
+    raise ValueError("LLM output unparsable:\n" + out)
 
-#  Graph keyword/FoS branch (same as before)
-TYPE_FILTER = {
-  "survey":"AND (toLower(p.title) CONTAINS 'survey' OR toLower(p.abstract) CONTAINS 'survey')",
-  "benchmark":"AND (toLower(p.title) CONTAINS 'benchmark' OR toLower(p.abstract) CONTAINS 'benchmark')",
-  "method paper":"AND (toLower(p.abstract) CONTAINS 'we propose' OR toLower(p.abstract) CONTAINS 'novel method')",
-  "application":"AND (toLower(p.abstract) CONTAINS 'we apply' OR toLower(p.abstract) CONTAINS 'application')",
-  "theoretical":"AND (toLower(p.abstract) CONTAINS 'we prove' OR toLower(p.abstract) CONTAINS 'theorem')",
-  "any":""
-}
 
-CYPHER = """
-MATCH (p:Paper)
-WHERE EXISTS {{
-  MATCH (p)-[:HAS_TOPIC]->(t:Topic)
-  WHERE ANY(term IN $terms WHERE toLower(t.keywords) CONTAINS term)
-}}
-OR EXISTS {{
-  MATCH (p)-[:HAS_FOS]->(f:FieldOfStudy)
-  WHERE ANY(term IN $terms WHERE toLower(f.name) = term)
-}}
-RETURN p.id   AS id,
-       p.title AS title,
-       p.year  AS year,
-       // soft match for paper_type
-       CASE $ptype
-         WHEN 'survey'        THEN (toLower(p.title)  CONTAINS 'survey'   OR toLower(p.abstract) CONTAINS 'survey')
-         WHEN 'benchmark'     THEN (toLower(p.title)  CONTAINS 'benchmark'OR toLower(p.abstract) CONTAINS 'benchmark')
-         WHEN 'method paper'  THEN (toLower(p.abstract) CONTAINS 'we propose' OR toLower(p.abstract) CONTAINS 'novel method')
-         WHEN 'application'   THEN (toLower(p.abstract) CONTAINS 'we apply'   OR toLower(p.abstract) CONTAINS 'application')
-         WHEN 'theoretical'   THEN (toLower(p.abstract) CONTAINS 'we prove'   OR toLower(p.abstract) CONTAINS 'theorem')
-         ELSE false
-       END AS type_match
-ORDER BY p.year DESC
-LIMIT 50;
-"""
 
-def build_id_lists(concepts):
-    topic_ids, fos_ids = set(), set()
-    for c in concepts:
-        if not isinstance(c, str) or len(c.split()) < 2:
-            continue
-        kind, idx = nearest_topic_fos(c)
-        if kind == "topic": topic_ids.add(idx)
-        elif kind == "fos": fos_ids.add(idx)
-    return list(topic_ids), list(fos_ids)
+# ─────────── RRF Fusion ────────────────────────────────────────
+def reciprocal_rank(rank:int, k:int=RRF_K)->float:
+    """Convert 0-based rank to reciprocal-rank score."""
+    return 1.0 / (k + rank)
 
-CYPHER_HITS = """
-MATCH (p:Paper)
-OPTIONAL MATCH (p)-[:HAS_TOPIC]->(t:Topic)
-  WHERE t.idx IN $topicIds
-OPTIONAL MATCH (p)-[:HAS_FOS]->(f:FieldOfStudy)
-  WHERE f.idx IN $fosIds
-WITH p, count(DISTINCT t) + count(DISTINCT f) AS total_hits
-WHERE total_hits > 0
-RETURN p.id AS id, p.title AS title, p.year AS year, total_hits,
-       CASE $ptype
-         WHEN 'survey'        THEN (toLower(p.title) CONTAINS 'survey'   OR toLower(p.abstract) CONTAINS 'survey')
-         WHEN 'benchmark'     THEN (toLower(p.title) CONTAINS 'benchmark'OR toLower(p.abstract) CONTAINS 'benchmark')
-         WHEN 'method paper'  THEN (toLower(p.abstract) CONTAINS 'we propose' OR toLower(p.abstract) CONTAINS 'novel method')
-         WHEN 'application'   THEN (toLower(p.abstract) CONTAINS 'we apply'   OR toLower(p.abstract) CONTAINS 'application')
-         WHEN 'theoretical'   THEN (toLower(p.abstract) CONTAINS 'we prove'   OR toLower(p.abstract) CONTAINS 'theorem')
-         ELSE false END AS type_match
-ORDER BY total_hits DESC, p.year DESC
-LIMIT 50;
-"""
+def fuse_rrf(vec_rows, graph_rows):
+    pool = {}
+    for row in vec_rows:
+        pool.setdefault(row["id"], 0.0)
+        pool[row["id"]] += reciprocal_rank(row["rank_vec"])
+    for row in graph_rows:
+        pool.setdefault(row["id"], 0.0)
+        pool[row["id"]] += reciprocal_rank(row["rank_graph"])
+    ranked = sorted(pool.items(), key=lambda x: x[1], reverse=True)
+    return ranked   # list of (id, fused_score)
 
-def graph_top50_fuzzy(concepts, ptype):
-    topicIds, fosIds = build_id_lists(concepts)
-    if not topicIds and not fosIds:
-        return []                       # rely on ANN branches only
-    with driver.session() as s:
-        rows = s.run(CYPHER_HITS,
-                     topicIds=topicIds, fosIds=fosIds, ptype=ptype).data()
-    out=[]
-    for r in rows:
-        out.append({"id":r["id"],"title":r["title"],"year":r["year"],
-                    "hits":r["total_hits"],
-                    "type_match":bool(r["type_match"]),
-                    "source_graph":True})
-    return out
-# EXTRA: utility tokenizer for whitelist 
-from transformers import AutoTokenizer
+# ─────────── Utilities for explanations / summaries ────────────
 bert_tok = AutoTokenizer.from_pretrained("allenai/scibert_scivocab_uncased")
 
 def make_whitelist_tokens(texts, extra_terms):
-    vocab = set()
-    for txt in texts + extra_terms:
-        for tok in bert_tok.tokenize(txt):
-            vocab.add(tok)
-    # also add common punctuation + stop words
-    vocab.update([",", ".", "(", ")", "the", "of", "and", "to", "is", "in", "for"])
-    ids = [bert_tok.convert_tokens_to_ids(t) for t in vocab if t in bert_tok.vocab]
-    return set(ids)
+    vocab=set()
+    for txt in texts+extra_terms:
+        vocab.update(bert_tok.tokenize(txt))
+    vocab.update([",",".","(",")","the","of","and","to","is","in","for"])
+    return {bert_tok.convert_tokens_to_ids(t) for t in vocab if t in bert_tok.vocab}
 
-# SHORT PATH → template sentence (≤3 hops) 
 def shortest_path_sentence(pid, topicIds, fosIds):
-    query = """
-    MATCH (p:Paper {id:$pid}),
-          (x)
+    q="""
+    MATCH (p:Paper {id:$pid}),(x)
     WHERE (x:Topic AND x.idx IN $topicIds) OR (x:FieldOfStudy AND x.idx IN $fosIds)
     WITH p,x LIMIT 1
-    MATCH pth = shortestPath( (p)-[*..3]-(x) )
-    RETURN [n IN nodes(pth) | labels(n)[0]] AS labs,
-           [n IN nodes(pth) | coalesce(n.title, n.keywords, n.name, n.idx)] AS names
+    MATCH pth=shortestPath((p)-[*..3]-(x))
+    RETURN [n IN nodes(pth)|labels(n)[0]] AS labs,
+           [n IN nodes(pth)|coalesce(n.title,n.keywords,n.name,n.idx)] AS names
     """
-    rec = driver.session().run(query, pid=pid, topicIds=topicIds, fosIds=fosIds).single()
+    rec=driver.session().run(q,pid=pid,topicIds=topicIds,fosIds=fosIds).single()
     if not rec: return ""
-    labs, names = rec["labs"], rec["names"]
-    # simple verbalization
-    hops = " → ".join(f"{names[i]} ({labs[i]})" for i in range(len(names)))
+    labs,names=rec["labs"],rec["names"]
+    hops=" → ".join(f"{names[i]} ({labs[i]})" for i in range(len(names)))
     return f"Path: {hops}"
 
-# LLaMA explanation generation for top 3
 def safe_summary(title, abstract, paragraph, whitelist_ids, timeout=2.0):
-    prompt = f"""Context:
+    prompt=f"""Context:
 TITLE: {title}
 ABSTRACT: {abstract}
 
@@ -225,123 +228,68 @@ Paragraph: {paragraph}
 
 Write two sentences explaining why this paper is relevant. Use ONLY words from the context."""
     try:
-        out = llm(prompt,
-                  max_new_tokens=60,
-                  temperature=0.0,
-                  do_sample=False,
-                  timeout=timeout)[0]["generated_text"]
-
-        # guard: every sub-token must be in whitelist
+        out=llm(prompt,max_new_tokens=60,temperature=0.0,do_sample=False,
+                timeout=timeout)[0]["generated_text"]
         for tok in out.split():
             if bert_tok.convert_tokens_to_ids(tok) not in whitelist_ids:
-                raise ValueError("OOV token")
+                raise ValueError
         return out.strip()
     except Exception:
-        # fallback → first two sentences of abstract
-        sent = abstract.split(". ")[:2]
-        return ". ".join(sent).strip()
+        return ". ".join(abstract.split(". ")[:2]).strip()
 
-
-# Merge + scoring (add struct) = need to think moew
-def score_and_rank(text_rows, graph_rows, struct_rows, ptype, top=10):
-    pool={}
-    for r in text_rows+graph_rows+struct_rows:
-        e=pool.setdefault(r["id"],{"id":r["id"],
-                                   "source_vec":False,"source_graph":False,"source_struct":False,
-                                   "sim":0,"sim_struct":0,"type_match":False, "hits": 0})
-        if r.get("source_vec"):   e["source_vec"]=True;   e["sim"]=max(e["sim"], r["sim"])
-        if r.get("source_struct"):e["source_struct"]=True;e["sim_struct"]=max(e["sim_struct"], r["sim_struct"])
-        if r.get("source_graph"):
-            e["source_graph"]=True
-            e.update({k:r[k] for k in ("title","year") if k in r})
-            e["type_match"]|=r.get("type_match",False)
-        if r.get("hits") is not None:
-            e["hits"] = max(e["hits"], r["hits"])
-            
-
-    ranked=[]
-    for d in pool.values():
-        sc = 0.0
-        sc += d["sim"]                          # text similarity
-        sc += 0.10*d["sim_struct"]
-        sc += 0.10 * d.get("hits", 0)              # multi-topic coverage# structural similarity (scaled)
-        if d["source_graph"]: sc += 0.20
-        if d["source_vec"] and d["source_graph"]: sc += 1.0
-        if ptype!="any" and d["type_match"]: sc += 0.15
-        d["score"]=sc; ranked.append(d)
-
-    ranked.sort(key=lambda x:x["score"], reverse=True)
-
-    # hydrate metadata for missing titles
-    miss=[r["id"] for r in ranked[:25] if "title" not in r]
-    if miss:
-        with driver.session() as s:
-            meta=s.run("MATCH (p:Paper) WHERE p.id IN $ids RETURN p.id AS id,p.title AS title,p.year AS year", ids=miss).data()
-        m={d["id"]:d for d in meta}
-        for r in ranked:
-            if "title" not in r: r.update(m.get(r["id"], {"title":"(missing)","year":""}))
-
-    df=pd.DataFrame(ranked[:top])
-    for col in ("source_vec","source_graph","source_struct"):  # guarantee cols
-        if col not in df.columns: df[col]=False
-
-    for col in ("summary", "explain_path"):
-        if col not in df.columns:
-            df[col] = ""
-    return df
-
-
-# CLI
+# ─────────── Main CLI ──────────────────────────────────────────
 if __name__=="__main__":
-    p=argparse.ArgumentParser(); p.add_argument("-p","--paragraph",required=True)
-    args=p.parse_args()
+    ap=argparse.ArgumentParser()
+    ap.add_argument("-p","--paragraph",required=True)
+    args=ap.parse_args()
 
-    # 1) LLM extraction
-    info = llm_extract(args.paragraph)
-    print("\nLLM extraction:", info)
+    # 1) Concept extraction
+    info=llm_extract(args.paragraph)
+    print("\nLLM concepts:", info["concepts"])
 
-    topicIds, fosIds = build_id_lists(info["concepts"])
-    graph_rows = graph_top50_fuzzy(info["concepts"], info["paper_type"])
+    topicIds,fosIds=build_id_lists(info["concepts"])
 
-    # 2) text ANN
-    vec_rows = vector_top25(embed(args.paragraph))
+    # 2) Parallel retrieval
+    vec_rows   = vector_topN(embed(args.paragraph))
+    graph_rows = graph_topN(topicIds,fosIds)
 
-    # 3) structural ANN
-    seed_ids = [r["id"] for r in vec_rows]
-    struct_rows = struct_top15(seed_ids)
+    # 3) Rank-based fusion
+    fused = fuse_rrf(vec_rows, graph_rows)          # list[(id,score)]
 
-    # 4) fuse + rank
-    top_df = score_and_rank(vec_rows, graph_rows, struct_rows, info["paper_type"])
+    # 4) Gather metadata and explanations
+    top_ids = [doc_id for doc_id,_ in fused[:10]]
+    with driver.session() as s:
+        meta=s.run(
+            "MATCH (p:Paper) WHERE p.id IN $ids "
+            "RETURN p.id AS id, p.title AS title, p.year AS year, p.abstract AS abs",
+            ids=top_ids).data()
+    meta_d = {m["id"]:m for m in meta}
 
-    # 5) add explanations
-    for idx, row in top_df.iterrows():
-        path = shortest_path_sentence(row["id"], topicIds, fosIds)
-        top_df.at[idx, "explain_path"] = path
-        if idx < 3:   # top-3 summary
-            # fetch title + abstract
-            rec = driver.session().run(
-                "MATCH (p:Paper {id:$pid}) RETURN p.title AS t, p.abstract AS a",
-                pid=row["id"]).single()
-            whitelist = make_whitelist_tokens([rec["t"], rec["a"]], info["concepts"])
-            summ = safe_summary(rec["t"], rec["a"], args.paragraph, whitelist)
-            top_df.at[idx, "summary"] = summ
+    rows=[]
+    for rank,(pid,score) in enumerate(fused[:10]):
+        m=meta_d.get(pid,{"title":"(missing)","year":"","abs":""})
+        path=shortest_path_sentence(pid,topicIds,fosIds)
+        if rank<3:
+            whitelist=make_whitelist_tokens([m["title"],m["abs"]],info["concepts"])
+            summ=safe_summary(m["title"],m["abs"],args.paragraph,whitelist)
         else:
-            # fallback snippet: first 2 sentences of abstract
-            rec = driver.session().run(
-                "MATCH (p:Paper {id:$pid}) RETURN p.abstract AS a", pid=row["id"]).single()
-            snip = ". ".join(rec["a"].split(". ")[:2]).strip()
-            top_df.at[idx, "summary"] = snip or "(abstract unavailable)"
+            summ=". ".join(m["abs"].split(". ")[:2]).strip() or "(abstract unavailable)"
+        rows.append(dict(id=pid,title=m["title"],year=m["year"],
+                         score=round(score,4),
+                         summary=summ,explain_path=path))
 
-    # 6) display
-    print("\nTop-10 ranked papers:\n")
-    print(top_df[["id","title","year","score",
-                "source_vec","source_struct","source_graph",
-                "hits","summary","explain_path"]].to_markdown(index=False))
+    df=pd.DataFrame(rows)
+    print("\nTop-10 ranked papers (RRF fusion):\n")
+    print(df.to_markdown(index=False))
 
 
-# run command 
-# python best_recommend.py -p "Therefore, knowledge graphs have seized great opportunities by improving the quality of AI systems and being applied to various areas. However, the research on knowledge graphs still faces significant technical challenges. For example, there are major limitations in the current technologies for acquiring knowledge from multiple sources and integrating them into a typical knowledge graph. Thus, knowledge graphs provide great opportunities in modern society. However, there are technical challenges in their development. Consequently, it is necessary to analyze the knowledge graphs with respect to their opportunities and challenges to develop a better understanding of the knowledge graphs."
+# python best_recommend.py -p "Compared to desktop computing, designing hardware and software for mobile computing presents a host of unique challenges, particularly because location, environment, connectivity, and other important factors are commonly unpredictable and dynamic. The strategies that have been demonstrated to be effective for desktop computing are only minimally useful for mobile computing. Clearly, different design and evaluation paradigms need to exist for mobile computing devices and environments. One study cites the inadequacy of the desktop metaphor for mobile computing for information presentation. This is merely a single example of the dissonance between effective desktop and mobile computing strategies. Another source notes that human-computer interaction has developed a good understanding of how to design and evaluate forms of interaction in fixed contexts of use, but this is not the situation for mobile computing. This highlights the issue of differences between desktop and mobile computing in terms of contexts of use. It has been pointed out that for traditional desktop computing applications, tasks take place within the computer, while for mobile computing, tasks typically reside outside of the computer, such as navigation or data recording. Thus, in many mobile computing interactions, there are multiple tasks taking place, often with the mobile task being secondary, which is why the context of use must be considered."
 
-# python best_recommend.py -p "An alternative to directed graphical models with latent variables are undirected graphical models with latent variables, such as restricted Boltzmann machines (RBMs), deep Boltzmann machines (DBMs) and their numerous variants. The interactions within such models are represented as the product of unnormalized potential functions, normalized by a global summation/integration over all states of the random variables. This quantity (the partition function) and its gradient are intractable for all but the most trivial instances, although they can be estimated by Markov chain Monte Carlo (MCMC) methods. Mixing poses a significant problem for learning algorithms that rely on MCMC."
+# python best_recommend.py -p "The key to improving the performance of parallel sparse LU factorization on second-class message passing platforms is to reduce inter-processor synchronization granularity and communication volume. In this paper, we examine the message passing overhead in parallel sparse LU factorization with two-dimensional data mapping and investigate techniques to reduce such overhead. Our main finding is that this objective can be achieved with a small amount of extra computation and slightly weakened numerical stability. Although such trade-offs may not be worthwhile on systems with high message passing performance, these techniques can be very beneficial for second-class message passing platforms. In particular, we propose a novel technique called speculative batch pivoting, in which large elements for a group of columns across all processors are collected at one processor, and the pivot selections for these columns are made together through speculative factorization. These pivot selections are accepted if the chosen pivots pass a numerical stability test; otherwise, the scheme falls back to the conventional column-by-column pivot selection for this group of columns. Speculative batch pivoting substantially decreases the inter-processor synchronization granularity compared with the conventional approach. This reduction is achieved at the cost of increased computation, specifically the cost of speculative factorization."
+# python explainability.py -p "In image recognition, VLAD is a representation that encodes by the residual vectors with respect to a dictionary, and Fisher Vector [30] can be formulated as a probabilistic version [18] of VLAD. Both of them are powerful shallow representations for image retrieval and classification [4, 48]. For vector quantization, encoding residual vectors [17] is shown to be more effective than encoding original vectors. In low-level vision and computer graphics, for solving Partial Differential Equations (PDEs), the widely used Multigrid method [3] reformulates the system as subproblems at multiple scales, where each subproblem is responsible for the residual solution between a coarser and a finer scale. An alternative to Multigrid is hierarchical basis preconditioning [45, 46], which relies on variables that represent residual vectors between two scales. It has been shown [3, 45, 46] that these solvers converge much faster than standard solvers that are unaware of the residual nature of the solutions. These methods suggest that a good reformulation or preconditioning can simplify the optimization."
 
-# python best_recommend.py -p "In image recognition, VLAD is a representation that encodes by the residual vectors with respect to a dictionary, and Fisher Vector [30] can be formulated as a probabilistic version [18] of VLAD. Both of them are powerful shallow representations for image retrieval and classification [4, 48]. For vector quantization, encoding residual vectors [17] is shown to be more effective than encoding original vectors. In low-level vision and computer graphics, for solving Partial Differential Equations (PDEs), the widely used Multigrid method [3] reformulates the system as subproblems at multiple scales, where each subproblem is responsible for the residual solution between a coarser and a finer scale. An alternative to Multigrid is hierarchical basis preconditioning [45, 46], which relies on variables that represent residual vectors between two scales. It has been shown [3, 45, 46] that these solvers converge much faster than standard solvers that are unaware of the residual nature of the solutions. These methods suggest that a good reformulation or preconditioning can simplify the optimization."
+
+
+
+
+143438160, 1981404639, 2003105834, 2004656897, 2017431061, 2023924583, 2027880019, 2038205735, 2041720103, 2069849438, 2070299075, 2111912335, 2119197001, 2141331848, 2145118117

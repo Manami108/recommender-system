@@ -4,13 +4,13 @@ import pandas as pd
 # ====== File Paths ======
 INPUT_JSONL = "/media/e-soc-student/DISK2/GR/GR2_Recommendation/datasets/big/testset_300.jsonl"  # this is JSONL
 DBLP_CSV = "/media/e-soc-student/DISK2/GR/GR2_Recommendation/datasets/big/dblp.v12.csv"
-OUTPUT_JSONL = "/media/e-soc-student/DISK2/GR/GR2_Recommendation/datasets/big/testset_300.jsonl"
+OUTPUT_JSONL = "/media/e-soc-student/DISK2/GR/GR2_Recommendation/datasets/big/testset_300_references.jsonl"
 # ========================
 
 # Step 1: Load JSONL entries
 entries = []
 with open(INPUT_JSONL, "r", encoding="utf-8") as f_in:
-    for _ in range(89):
+    for _ in range(100):
         line = f_in.readline()
         if not line:
             break
@@ -23,7 +23,7 @@ with open(INPUT_JSONL, "r", encoding="utf-8") as f_in:
 print(f"Valid entries after filtering: {len(entries)}")
 
 # Step 2: Load DBLP dataset
-print("🔍 Loading DBLP dataset...")
+print("Loading DBLP dataset...")
 dblp_df = pd.read_csv(DBLP_CSV, usecols=["doi", "references"], low_memory=False)
 dblp_df["doi"] = dblp_df["doi"].astype(str).str.strip()
 
