@@ -1,7 +1,7 @@
 # This is only graph search based recommendation 
 # But still, need to think about how to make it faster because now its running on cpu
 # Need to think about importance score for the keywords matching 
-# 
+# Need to think about path length. hops reasoning 
 
 
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
