@@ -82,11 +82,13 @@ Expected output (JSON only, no extra text):
         do_sample=False
     )[0]["generated_text"]
 
-# Max new tokens are set to 150 to limit the LLM's answer (but the token is in addition to the input)
+# Max new tokens are set to 600 to limit the LLM's answer (but the token is in addition to the input)
 # temperature tells what kind of output. For example, 0.0 tells always same output for the same input but 1.0 has balanced randomness. so 0.0 tells conssistent and accurate answers
 # Sample also tells the randomness. so if i set sample = True, then temerature tells how much randomness i want.
 
-        # Extract only the last JSON match to avoid example echo
+    # Extract valid JSON from output
+    # This line try to search all strings like this (json-looking substrings) and (re is search for patterns)
+    # The json file is made like this {"concepts": ["knowledge graphs", "AI systems", "data integration"]}
     matches = re.findall(r"\{[^{}]+\}", result, re.S)
     if matches:
         last = matches[-1]
