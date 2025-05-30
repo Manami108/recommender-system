@@ -1,4 +1,4 @@
-# This tries weight scoring method 
+# This tries weight scoring method but have the error so need to reformulated
 
 import os, re, json, warnings, pandas as pd, torch
 from neo4j import GraphDatabase
@@ -16,13 +16,8 @@ model = AutoModelForCausalLM.from_pretrained(
     device_map="auto" #This line is to make sure model is loaded on GPU (however, in Manami's computer, it becomes CPU cuz simply, the my gpu cannot handle it. )
 )
 
-# This is the generation pipeline 
-generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
-
 # This is few-shot prompt engineering. 
-
-def extract_concepts(paragraph: str, debug: bool = False):
-    prompt = f"""
+PROMPT_TEMPLATE = r"""
 You are an academic assistant for computer-science papers.
 You are an academic assistant of computer science field. Extract the most important research concepts (keywords of the from the paragraph wrapped in <TEXT> tags.
 Extract some unique terms rather than common words in computer science paper paragraph. 
@@ -115,25 +110,27 @@ Now, without repeating the above examples, extract concepts for the following pa
 Expected output (JSON ponly, no extra test):
 """
     
-    result = generator(prompt, max_new_tokens=600, temperature=0.0, do_sample=False)[0]["generated_text"]
-#   if debug:
-#    print("=== RAW MODEL OUTPUT ===")
-#       print(result) 
-#      print("========================")
+# This is the generation pipeline 
+generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
 
 
-    # search each JSON-looking block from last to first
-    # look for the JSON after the marker
-    m = re.search(r"Here is the output JSON:\s*(\{.*\})", result, re.S)
-    if not m:
-        raise ValueError(f"No JSON marker found. Full output:\n{result}")
-    try:
-        data = json.loads(m.group(1))
-    except json.JSONDecodeError as e:
-        raise ValueError(f"Failed to parse JSON:\n{m.group(1)}\nError: {e}")
-    if "concepts" not in data or not isinstance(data["concepts"], list):
-        raise ValueError(f"JSON missing concepts list:\n{data}")
-    return data["concepts"]
+def extract_concepts(paragraph: str, debug=False):
+    prompt = PROMPT_TEMPLATE.format(paragraph=paragraph.strip())
+    response = generator(prompt, max_new_tokens=400,
+                         temperature=0.0, do_sample=False)[0]["generated_text"]
+
+    if debug:
+        print("RAW:\n", response, "\n---")
+
+    for chunk in re.findall(r"\{[^{}]+\}", response, re.S)[::-1]:
+        try:
+            data = json.loads(chunk)
+            if "concepts" in data:
+                return data["concepts"]
+        except json.JSONDecodeError:
+            continue
+    raise ValueError("No JSON with 'concepts' found.")
+
 
 
 import os, re, json, warnings, pandas as pd, torch
@@ -182,16 +179,8 @@ if __name__ == "__main__":
     paragraph = (
           "Recently, as advanced natural language processing techniques, Large Language Models (LLMs) with billion parameters have generated large impacts on various research fields such as Natural Language Processing (NLP), Computer Vision, and Molecule Discovery. Technically most existing LLMs are transformer-based models pre-trained on a vast amount of textual data from diverse sources, such as articles, books, websites, and other publicly available written materials. As the parameter size of LLMs continues to scale up with a larger training corpus, recent studies indicated that LLMs can lead to the emergence of remarkable capabilities. More specifically, LLMs have demonstrated the unprecedentedly powerful abilities of their fundamental responsibilities in language understanding and generation. These improvements enable LLMs to better comprehend human intentions and generate language responses that are more human-like in nature. Moreover, recent studies indicated that LLMs exhibit impressive generalization and reasoning capabilities, making LLMs better generalize to a variety of unseen tasks and domains. To be specific, instead of requiring extensive fine-tuning on each specific task, LLMs can apply their learned knowledge and reasoning skills to fit new tasks simply by providing appropriate instructions or a few task demonstrations. Advanced techniques such as in-context learning can further enhance such generalization performance of LLMs without being fine-tuned on specific downstream tasks. In addition, empowered by prompting strategies such as chain-of-thought, LLMs can generate the outputs with step-by-step reasoning in complicated decision-making processes.Hence, given their powerful abilities, LLMs demonstrate great potential to revolutionize recommender systems."
     )
-
-    # 1) extract and weight concepts
-    kw_list = extract_concepts(paragraph)
-
-    # 2) run weighted-graph search
+    
+    kw_list = extract_concepts(paragraph, debug=True)
+    print("Weighted concepts:", kw_list)
     df = query_with_weights(kw_list)
-
-    # 3) print only the recommendation table
-    if df.empty:
-        print(" No candidate papers found.")
-    else:
-        # print all returned papers, or head(10) if you prefer
-        print(df.to_string(index=False))
+    print(df.head(10).to_string(index=False))
