@@ -1,13 +1,20 @@
-# This is only graph search based recommendation 
+# This is only hybrid search based recommendation 
 # But still, need to think about how to make it faster because now its running on cpu
 # Need to think about importance score for the keywords matching 
 # Need to think about path length. hops reasoning 
 
-
-from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
-import re, json
+import os
+import re
+import json
+import warnings
+import pandas as pd
 import torch
-# This code does load model (huggingdace)
+
+from neo4j import GraphDatabase
+from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
+from sentence_transformers import SentenceTransformer
+
+warnings.filterwarnings("ignore", category=UserWarning)
 
 MODEL_ID = "meta-llama/Meta-Llama-3-8B-Instruct"
 print("▶ Loading LLaMA 3-8B...")
@@ -20,7 +27,6 @@ model = AutoModelForCausalLM.from_pretrained(
 
 # This is the generation pipeline 
 generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
-
 
 # Extract concepts with refined few-shot prompting
 def extract_concepts(paragraph: str):
@@ -80,7 +86,7 @@ Now, without repeating the above examples, extract concepts for the following pa
 Expected output (JSON only, no extra text):
 
 """
-    
+
     result = generator(
         prompt,
         max_new_tokens=600,
@@ -91,6 +97,7 @@ Expected output (JSON only, no extra text):
 # Max new tokens are set to 600 to limit the LLM's answer (but the token is in addition to the input)
 # temperature tells what kind of output. For example, 0.0 tells always same output for the same input but 1.0 has balanced randomness. so 0.0 tells conssistent and accurate answers
 # Sample also tells the randomness. so if i set sample = True, then temerature tells how much randomness i want.
+
 
     # Extract valid JSON from output
     # This line try to search all strings like this (json-looking substrings) and (re is search for patterns)
@@ -109,16 +116,47 @@ Expected output (JSON only, no extra text):
 
 
 
-import os, re, json, warnings, pandas as pd, torch
-from neo4j import GraphDatabase
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
-warnings.filterwarnings("ignore", category=UserWarning)
+# SciBERT embedding 
+print("▶ Loading SciBERT embedder…")
+sci_model = SentenceTransformer("allenai/scibert_scivocab_uncased")
+sci_model.eval()
+
+def embed(text: str) -> list[float]:
+    # returns normalized embedding
+    vec = sci_model.encode(text, convert_to_numpy=True, normalize_embeddings=True)
+    return vec.tolist()
+
+def vector_search(qvec, top_k=25) -> pd.DataFrame:
+    with driver.session() as s:
+        rows = s.run(
+            """
+            CALL db.index.vector.queryNodes('paper_vec', $k, $vec)
+            YIELD node, score
+            RETURN node.id AS id, 1.0 - score AS sim
+            ORDER BY score ASC
+            """, k=top_k, vec=qvec
+        ).data()
+    return pd.DataFrame(rows)
+
+
+def hydrate_paper_meta(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty: return df
+    ids = df["id"].tolist()
+    with driver.session() as s:
+        meta = s.run(
+            "MATCH (p:Paper) WHERE p.id IN $ids RETURN p.id AS id, p.title AS title, p.year AS year",
+            ids=ids
+        ).data()
+    return df.merge(pd.DataFrame(meta), on="id", how="left")[["id","title","year","sim"]]
+
 
 # This is neo4j driver (calling neo4j)
 driver = GraphDatabase.driver(
     os.getenv("NEO4J_URI",  "bolt://localhost:7687"),
-    auth=(os.getenv("NEO4J_USER", "neo4j"),
-          os.getenv("NEO4J_PASS", "Manami1008"))
+    auth=(
+        os.getenv("NEO4J_USER","neo4j"),
+        os.getenv("NEO4J_PASS","Manami1008")
+    )
 )
 
 # MATCH (p:Paper) selects all paper labels, and WHERE tells the paper which matches with concepts etraxted from user's paragraph.
@@ -127,21 +165,20 @@ driver = GraphDatabase.driver(
 # The keywords are seached in title, abstracts, and field of study or topics. 
 # But for as topics and as field of study (x), it checks one hop to search paper p
 # Return paper id, title, year (now, its sorted by year cuz there is no ranking method)
-# Return 50 maximum
 
 BASE_CYPHER = """
 MATCH (p:Paper)
-WHERE
+WHERE 
   ANY(t IN $terms WHERE toLower(p.title)    CONTAINS t) OR
   ANY(t IN $terms WHERE toLower(p.abstract) CONTAINS t) OR
   EXISTS {
-     MATCH (p)-[:HAS_TOPIC|:HAS_FOS]->(x)
-     WHERE ANY(t IN $terms WHERE toLower(x.name) CONTAINS t)
+    MATCH (p)-[:HAS_TOPIC|:HAS_FOS]->(x)
+    WHERE ANY(t IN $terms WHERE toLower(x.name) CONTAINS t)
   }
 RETURN p.id AS id, p.title AS title, p.year AS year
 ORDER BY p.year DESC
-LIMIT 50
 """
+
 # The concept in this is accept a list of concept keywords extracted from a paragraph
 # And run Cypher query agianst Neo4j knowledge graph
 # Return a paper
@@ -149,6 +186,7 @@ LIMIT 50
 # Filters out single word tems by keeping 2 o more words to reduce noise. Multi-word is always better no?
 # After filltering it out returns dataFrame
 # rows = s.run(BASE_CYPHER, terms=terms).data() this executes the BASE_CYPHER query and the pass the terms list into $terms
+
 
 def graph_search(concepts: list[str]) -> pd.DataFrame:
     terms = [c.lower() for c in concepts if len(c.split()) >= 2]
@@ -158,6 +196,7 @@ def graph_search(concepts: list[str]) -> pd.DataFrame:
         rows = s.run(BASE_CYPHER, terms=terms).data()
     return pd.DataFrame(rows)
 
+
 # Demo
 if __name__ == "__main__":
     paragraph = (
@@ -165,11 +204,13 @@ if __name__ == "__main__":
     )
 
     concepts = extract_concepts(paragraph)
-    print("\n▶ Extracted Concepts:")
-    for concept in concepts:
-        print(f"- {concept}")
-        
-    df = graph_search(concepts)
-    print(f"\n⬇  {len(df)} candidate papers")
-    print("\nTop 10 Candidate Papers:")
-    print(df.head(10).to_string(index=False))
+    print("\n▶ Extracted concepts:\n", concepts)
+
+    df_graph = graph_search(concepts)
+    print(f"\n⬇ Graph search ({len(df_graph)} hits):")
+    print(df_graph.head(25).to_string(index=False))
+
+    df_vec = vector_search(embed(paragraph), top_k=25)
+    df_vec = hydrate_paper_meta(df_vec)
+    print(f"\n⬇ Vector search ({len(df_vec)} hits):")
+    print(df_vec.head(25).to_string(index=False, formatters={"sim":"{:.3f}".format}))
