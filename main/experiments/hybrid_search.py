@@ -1,209 +1,216 @@
-#!/usr/bin/env python
-"""
-hybrid_rank25_to10.py
-Fetch 25 papers from vector search + 25 from graph search,
-merge, score, and output the top 10 results.
-"""
+# This is only hybrid search based recommendation 
+# But still, need to think about how to make it faster because now its running on cpu
+# Need to think about importance score for the keywords matching 
+# Need to think about path length. hops reasoning 
 
-import os, re, json, ast, argparse, warnings
-import pandas as pd, torch
+import os
+import re
+import json
+import warnings
+import pandas as pd
+import torch
+
 from neo4j import GraphDatabase
+from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
 from sentence_transformers import SentenceTransformer
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
-# ─── Neo4j driver ───────────────────────────────────────────────────────────
-driver = GraphDatabase.driver(
-    os.getenv("NEO4J_URI",  "bolt://localhost:7687"),
-    auth=(os.getenv("NEO4J_USER","neo4j"), os.getenv("NEO4J_PASS","Manami1008"))
+MODEL_ID = "meta-llama/Meta-Llama-3-8B-Instruct"
+print("▶ Loading LLaMA 3-8B...")
+tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+model = AutoModelForCausalLM.from_pretrained(
+    MODEL_ID,
+    torch_dtype=torch.float16, # I think this is memmory efficient, less VRAM usage!!
+    device_map="auto" #This line is to make sure model is loaded on GPU (however, in Manami's computer, it becomes CPU cuz simply, the my gpu cannot handle it. )
 )
 
-# ─── SciBERT embedder ───────────────────────────────────────────────────────
-print("▶ Loading SciBERT …")
+# This is the generation pipeline 
+generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
+
+# Extract concepts with refined few-shot prompting
+def extract_concepts(paragraph: str):
+    prompt = f"""
+You are an academic assistant of computer science field. Extract the most important research concepts (keywords of the from the paragraph wrapped in <TEXT> tags.
+Respond only with a JSON object of the form {{"concepts": ["concept1","concept2",…]}}. Extract some unique terms rather than common words in computer science paper paragraph. 
+
+Example 1:
+<TEXT>
+Transformer-based architectures, like BERT and GPT, have revolutionized NLP by enabling bidirectional attention and large-scale pretraining.
+These models achieve state-of-the-art results in tasks such as question answering, machine translation, and text summarization.
+</TEXT>
+Expected output:
+{{"concepts": ["transformer", "BERT", "GPT", "bidirectional attention", "pretraining", "question answering", "machine translation", "text summarization"]}}
+
+Example 2:
+<TEXT>
+Knowledge graphs represent entities and their relations as a structured graph. They are widely used in tasks like entity linking, question answering, and recommendation systems.
+</TEXT>
+Expected output:
+{{"concepts": ["knowledge graph","entity linking", "question answering", "recommendation systems", "semantic context"]}}
+
+Example 3:
+<TEXT>
+Graph neural networks (GNNs) extend deep learning to non-Euclidean graph data by iteratively aggregating neighborhood information.  
+Popular variants include Graph Convolutional Networks (GCNs), Graph Attention Networks (GATs), and Message Passing Neural Networks (MPNNs).  
+They’ve been applied to node classification, link prediction, and molecular property prediction.
+</TEXT>
+Expected output:
+{{"concepts": ["graph neural network", "neighborhood aggregation", "Graph Convolutional Network (GCN)", "Graph Attention Network (GAT)", "Message Passing Neural Network (MPNN)", "node classification", "link prediction", "molecular property prediction"]}}
+
+Example 4:
+<TEXT>
+To speed up query performance, modern database systems often employ B-tree and LSM-tree indexes.  
+B-trees support balanced, ordered data access with logarithmic search time, while Log-Structured Merge trees buffer writes in memory and batch them to disk for high write throughput.  
+Secondary indexes like inverted lists or hash indexes accelerate lookups on non-primary key columns.
+</TEXT>
+Expected output:
+{{"concepts": ["B-tree index", "LSM-tree index", "logarithmic search time", "write buffering", "batch disk writes", "secondary index", "inverted list", "hash index", "non-primary key lookup"]}}
+
+Example 5:
+<TEXT>
+In distributed consensus, Raft and Paxos are two foundational algorithms.  
+Raft divides the problem into leader election, log replication, and safety, making it more understandable.  
+Paxos focuses on proposer, acceptor, and learner roles to reach agreement despite failures.  
+Gossip protocols and vector clock mechanisms are also widely used for state propagation and causality tracking.
+</TEXT>
+Expected output:
+{{"concepts": ["distributed consensus", "Raft algorithm", "leader election", "log replication", "Paxos algorithm", "proposer role", "acceptor role", "learner role", "gossip protocol", "vector clock"]}}
+
+
+---
+Now, without repeating the above examples, extract concepts for the following paragraph:
+<TEXT>
+{paragraph}
+</TEXT>
+Expected output (JSON only, no extra text):
+
+"""
+
+    result = generator(
+        prompt,
+        max_new_tokens=600,
+        temperature=0.0,
+        do_sample=False
+    )[0]["generated_text"]
+
+# Max new tokens are set to 600 to limit the LLM's answer (but the token is in addition to the input)
+# temperature tells what kind of output. For example, 0.0 tells always same output for the same input but 1.0 has balanced randomness. so 0.0 tells conssistent and accurate answers
+# Sample also tells the randomness. so if i set sample = True, then temerature tells how much randomness i want.
+
+
+    # Extract valid JSON from output
+    # This line try to search all strings like this (json-looking substrings) and (re is search for patterns)
+    # The json file is made like this {"concepts": ["knowledge graphs", "AI systems", "data integration"]}
+    matches = re.findall(r"\{[^{}]+\}", result, re.S)
+    if matches:
+        last = matches[-1]
+        try:
+            data = json.loads(last)
+            if "concepts" in data and isinstance(data["concepts"], list):
+                return data["concepts"]
+        except json.JSONDecodeError:
+            pass
+    raise ValueError(f"Could not parse model output for paragraph. Full output:\n{result}")
+
+
+
+
+# SciBERT embedding 
+print("▶ Loading SciBERT embedder…")
 sci_model = SentenceTransformer("allenai/scibert_scivocab_uncased")
 sci_model.eval()
 
-def embed(text:str):
-    return sci_model.encode(text, convert_to_numpy=True,
-                            normalize_embeddings=True).tolist()
+def embed(text: str) -> list[float]:
+    # returns normalized embedding
+    vec = sci_model.encode(text, convert_to_numpy=True, normalize_embeddings=True)
+    return vec.tolist()
 
-def vector_top25(qvec):
+def vector_search(qvec, top_k=25) -> pd.DataFrame:
     with driver.session() as s:
-        rows = s.run("""
-            CALL db.index.vector.queryNodes('paper_vec', 25, $q)
+        rows = s.run(
+            """
+            CALL db.index.vector.queryNodes('paper_vec', $k, $vec)
             YIELD node, score
-            RETURN node.id AS id, score
-            ORDER BY score ASC    // cosine distance: smaller is nearer
-        """, q=qvec).data()
-    return [{"id":r["id"],
-             "sim": 1.0 - r["score"],   # similarity ∈ [−1,1]
-             "source_vec":True} for r in rows]
+            RETURN node.id AS id, 1.0 - score AS sim
+            ORDER BY score ASC
+            """, k=top_k, vec=qvec
+        ).data()
+    return pd.DataFrame(rows)
 
-# ─── LLaMA extractor ────────────────────────────────────────────────────────
-MODEL_ID = "meta-llama/Llama-3.1-8B-Instruct"
-print("▶ Loading LLaMA-8B …")
-llm = pipeline("text-generation",
-    model=AutoModelForCausalLM.from_pretrained(
-        MODEL_ID, device_map="auto", torch_dtype=torch.float16),
-    tokenizer=AutoTokenizer.from_pretrained(MODEL_ID)
+
+def hydrate_paper_meta(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty: return df
+    ids = df["id"].tolist()
+    with driver.session() as s:
+        meta = s.run(
+            "MATCH (p:Paper) WHERE p.id IN $ids RETURN p.id AS id, p.title AS title, p.year AS year",
+            ids=ids
+        ).data()
+    return df.merge(pd.DataFrame(meta), on="id", how="left")[["id","title","year","sim"]]
+
+
+# This is neo4j driver (calling neo4j)
+driver = GraphDatabase.driver(
+    os.getenv("NEO4J_URI",  "bolt://localhost:7687"),
+    auth=(
+        os.getenv("NEO4J_USER","neo4j"),
+        os.getenv("NEO4J_PASS","Manami1008")
+    )
 )
 
-PROMPT = """
-You are an academic assistant helping a researcher find papers.
-Extract JSON: {{"concepts":["x","y"],"paper_type":"survey"}}
-<TEXT>{paragraph}</TEXT>
-"""
+# MATCH (p:Paper) selects all paper labels, and WHERE tells the paper which matches with concepts etraxted from user's paragraph.
+# $terms is a parameter which is passed into
+# So its like "Is there any term t in the input $terms list such that lowercase paper title contains that term?"
+# The keywords are seached in title, abstracts, and field of study or topics. 
+# But for as topics and as field of study (x), it checks one hop to search paper p
+# Return paper id, title, year (now, its sorted by year cuz there is no ranking method)
 
-def llm_extract(paragraph:str):
-    out = llm(PROMPT.format(paragraph=paragraph.strip()),
-              max_new_tokens=256,temperature=0.0,do_sample=False)[0]["generated_text"]
-    for chunk in re.findall(r"\{[^{}]+\}", out, re.S):
-        for loader in (json.loads, ast.literal_eval):
-            try:
-                d = loader(chunk);  # may raise
-                if "concepts" in d and "paper_type" in d:
-                    return d
-            except Exception:
-                continue
-    raise ValueError("LLM output unparsable:\n"+out)
-
-# ─── Cypher branch ──────────────────────────────────────────────────────────
-TYPE_FILTER = {
-  "survey":"AND (toLower(p.title) CONTAINS 'survey' OR toLower(p.abstract) CONTAINS 'survey')",
-  "benchmark":"AND (toLower(p.title) CONTAINS 'benchmark' OR toLower(p.abstract) CONTAINS 'benchmark')",
-  "method paper":"AND (toLower(p.abstract) CONTAINS 'we propose' OR toLower(p.abstract) CONTAINS 'novel method')",
-  "application":"AND (toLower(p.abstract) CONTAINS 'we apply' OR toLower(p.abstract) CONTAINS 'application')",
-  "theoretical":"AND (toLower(p.abstract) CONTAINS 'we prove' OR toLower(p.abstract) CONTAINS 'theorem')",
-  "any":""
-}
-
-CYPHER = """
+BASE_CYPHER = """
 MATCH (p:Paper)
-WHERE EXISTS {{
-  MATCH (p)-[:HAS_TOPIC]->(t:Topic)
-  WHERE ANY(term IN $terms WHERE toLower(t.keywords) CONTAINS term)
-}}
-OR EXISTS {{
-  MATCH (p)-[:HAS_FOS]->(f:FieldOfStudy)
-  WHERE ANY(term IN $terms WHERE toLower(f.name) = term)
-}}
-RETURN p.id   AS id,
-       p.title AS title,
-       p.year  AS year,
-       // soft match for paper_type
-       CASE $ptype
-         WHEN 'survey'        THEN (toLower(p.title)  CONTAINS 'survey'   OR toLower(p.abstract) CONTAINS 'survey')
-         WHEN 'benchmark'     THEN (toLower(p.title)  CONTAINS 'benchmark'OR toLower(p.abstract) CONTAINS 'benchmark')
-         WHEN 'method paper'  THEN (toLower(p.abstract) CONTAINS 'we propose' OR toLower(p.abstract) CONTAINS 'novel method')
-         WHEN 'application'   THEN (toLower(p.abstract) CONTAINS 'we apply'   OR toLower(p.abstract) CONTAINS 'application')
-         WHEN 'theoretical'   THEN (toLower(p.abstract) CONTAINS 'we prove'   OR toLower(p.abstract) CONTAINS 'theorem')
-         ELSE false
-       END AS type_match
+WHERE 
+  ANY(t IN $terms WHERE toLower(p.title)    CONTAINS t) OR
+  ANY(t IN $terms WHERE toLower(p.abstract) CONTAINS t) OR
+  EXISTS {
+    MATCH (p)-[:HAS_TOPIC|:HAS_FOS]->(x)
+    WHERE ANY(t IN $terms WHERE toLower(x.name) CONTAINS t)
+  }
+RETURN p.id AS id, p.title AS title, p.year AS year
 ORDER BY p.year DESC
-LIMIT 50;
 """
 
+# The concept in this is accept a list of concept keywords extracted from a paragraph
+# And run Cypher query agianst Neo4j knowledge graph
+# Return a paper
+# It returns a pandas.DataFrame object containing search results from Neo4j.
+# Filters out single word tems by keeping 2 o more words to reduce noise. Multi-word is always better no?
+# After filltering it out returns dataFrame
+# rows = s.run(BASE_CYPHER, terms=terms).data() this executes the BASE_CYPHER query and the pass the terms list into $terms
 
-def graph_top50(concepts, ptype):
-    terms = [t.lower() for t in concepts if isinstance(t,str) and len(t.split())>=2]
-    if not terms: return []
+
+def graph_search(concepts: list[str]) -> pd.DataFrame:
+    terms = [c.lower() for c in concepts if len(c.split()) >= 2]
+    if not terms:
+        return pd.DataFrame(columns=["id","title","year"])
     with driver.session() as s:
-        rows = s.run(CYPHER, terms=terms, ptype=ptype).data()
-    out = []
-    for r in rows:
-        out.append({"id": r["id"],
-                    "title": r["title"],
-                    "year": r["year"],
-                    "type_match": bool(r["type_match"]),
-                    "source_graph": True})
-    return out
-
-# ─── Merge, score, pick top-10 ──────────────────────────────────────────────
-def hydrate_meta(rows_missing):
-    ids = [r["id"] for r in rows_missing]
-    with driver.session() as s:
-        meta = s.run("MATCH (p:Paper) WHERE p.id IN $ids "
-                     "RETURN p.id AS id, p.title AS title, p.year AS year",
-                     ids=ids).data()
-    meta_d = {m["id"]:m for m in meta}
-    for r in rows_missing:
-        r.update(meta_d.get(r["id"], {"title":"(missing)","year":""}))
-
-# ─── Merge, score, pick top-10 (fixed) ───────────────────────────────
-def score_and_rank(vec_rows, graph_rows, ptype, top=10):
-    pool = {}
-    for r in vec_rows + graph_rows:
-        entry = pool.setdefault(r["id"], {
-            "id": r["id"], "source_vec": False, "source_graph": False,
-            "sim": 0.0, "type_match": False})
-        if r.get("source_vec"):
-            entry["source_vec"] = True
-            entry["sim"] = max(entry["sim"], r.get("sim", 0))
-        if r.get("source_graph"):
-            entry["source_graph"] = True
-            entry.update({k: r[k] for k in ("title", "year") if k in r})
-            entry["type_match"] |= r.get("type_match", False)
-
-    ranked = []
-    for d in pool.values():
-        sc = 0.0
-        if d["source_vec"]:   sc += d["sim"]
-        if d["source_graph"]: sc += 0.20
-        if d["source_vec"] and d["source_graph"]: sc += 1.0
-        if ptype != "any" and d["type_match"]:   sc += 0.15
-        d["score"] = sc
-        ranked.append(d)
-
-    ranked.sort(key=lambda x: x["score"], reverse=True)
-
-    # hydrate metadata for vector-only rows (max first 25)
-    missing = [r["id"] for r in ranked[:25] if "title" not in r]
-    if missing:
-        with driver.session() as s:
-            meta = s.run("""
-                MATCH (p:Paper) WHERE p.id IN $ids
-                RETURN p.id AS id, p.title AS title, p.year AS year
-            """, ids=missing).data()
-        meta_map = {m["id"]: m for m in meta}
-        for r in ranked:
-            if "title" not in r:
-                r.update(meta_map.get(r["id"], {"title": "(missing)", "year": ""}))
-
-    df = pd.DataFrame(ranked[:top])
-
-    # ensure indicator columns exist
-    for col in ("source_vec", "source_graph"):
-        if col not in df.columns:
-            df[col] = False
-    return df
+        rows = s.run(BASE_CYPHER, terms=terms).data()
+    return pd.DataFrame(rows)
 
 
-
-# ─── CLI ────────────────────────────────────────────────────────────────────
+# Demo
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser()
-    ap.add_argument("-p","--paragraph",required=True)
-    args = ap.parse_args()
+    paragraph = (
+       "Recently, as advanced natural language processing techniques, Large Language Models (LLMs) with billion parameters have generated large impacts on various research fields such as Natural Language Processing (NLP), Computer Vision, and Molecule Discovery. Technically most existing LLMs are transformer-based models pre-trained on a vast amount of textual data from diverse sources, such as articles, books, websites, and other publicly available written materials. As the parameter size of LLMs continues to scale up with a larger training corpus, recent studies indicated that LLMs can lead to the emergence of remarkable capabilities. More specifically, LLMs have demonstrated the unprecedentedly powerful abilities of their fundamental responsibilities in language understanding and generation. These improvements enable LLMs to better comprehend human intentions and generate language responses that are more human-like in nature. Moreover, recent studies indicated that LLMs exhibit impressive generalization and reasoning capabilities, making LLMs better generalize to a variety of unseen tasks and domains. To be specific, instead of requiring extensive fine-tuning on each specific task, LLMs can apply their learned knowledge and reasoning skills to fit new tasks simply by providing appropriate instructions or a few task demonstrations. Advanced techniques such as in-context learning can further enhance such generalization performance of LLMs without being fine-tuned on specific downstream tasks. In addition, empowered by prompting strategies such as chain-of-thought, LLMs can generate the outputs with step-by-step reasoning in complicated decision-making processes.Hence, given their powerful abilities, LLMs demonstrate great potential to revolutionize recommender systems."
+    )
 
-    # symbolic first (we may want ptype before scoring)
-    info = llm_extract(args.paragraph)
-    print("\nLLM extraction:", info)
-    graph_rows = graph_top50(info["concepts"], info["paper_type"])
+    concepts = extract_concepts(paragraph)
+    print("\n▶ Extracted concepts:\n", concepts)
 
-    # semantic
-    vec25 = vector_top25(embed(args.paragraph))
+    df_graph = graph_search(concepts)
+    print(f"\n⬇ Graph search ({len(df_graph)} hits):")
+    print(df_graph.head(25).to_string(index=False))
 
-    # rank
-    top10 = score_and_rank(vec25, graph_rows, info["paper_type"])
-
-    if top10.empty:
-        print("\n⚠  No papers found.")
-    else:
-        print("\nTop 10 ranked papers:\n")
-        print(top10[["id","title","year","score",
-                     "source_vec","source_graph"]].to_markdown(index=False))
-
-
-# run command 
-# python hybrid_query.py -p "Therefore, knowledge graphs have seized great opportunities by improving the quality of AI systems and being applied to various areas. However, the research on knowledge graphs still faces significant technical challenges. For example, there are major limitations in the current technologies for acquiring knowledge from multiple sources and integrating them into a typical knowledge graph. Thus, knowledge graphs provide great opportunities in modern society. However, there are technical challenges in their development. Consequently, it is necessary to analyze the knowledge graphs with respect to their opportunities and challenges to develop a better understanding of the knowledge graphs."
+    df_vec = vector_search(embed(paragraph), top_k=25)
+    df_vec = hydrate_paper_meta(df_vec)
+    print(f"\n⬇ Vector search ({len(df_vec)} hits):")
+    print(df_vec.head(25).to_string(index=False, formatters={"sim":"{:.3f}".format}))
