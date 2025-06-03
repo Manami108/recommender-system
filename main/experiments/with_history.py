@@ -9,6 +9,8 @@ import json
 import warnings
 import pandas as pd
 import torch
+import numpy as np          
+
 
 from neo4j import GraphDatabase
 from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
@@ -29,7 +31,6 @@ model = AutoModelForCausalLM.from_pretrained(
 generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
 
 # Extract concepts with refined few-shot prompting
-# https://www.promptingguide.ai/techniques/cot
 def extract_concepts(paragraph: str):
     prompt = f"""
 You are an academic assistant of computer science field. Extract the most important research concepts (keywords of the from the paragraph wrapped in <TEXT> tags.
@@ -87,15 +88,17 @@ Now, without repeating the above examples, extract concepts for the following pa
 Expected output (JSON only, no extra text):
 
 """
-# Max new tokens are set to 600 to limit the LLM's answer (but the token is in addition to the input)
-# temperature tells what kind of output. For example, 0.0 tells always same output for the same input but 1.0 has balanced randomness. so 0.0 tells conssistent and accurate answers
-# Sample also tells the randomness. so if i set sample = True, then temerature tells how much randomness i want.
+
     result = generator(
         prompt,
         max_new_tokens=600,
         temperature=0.0,
         do_sample=False
     )[0]["generated_text"]
+
+# Max new tokens are set to 600 to limit the LLM's answer (but the token is in addition to the input)
+# temperature tells what kind of output. For example, 0.0 tells always same output for the same input but 1.0 has balanced randomness. so 0.0 tells conssistent and accurate answers
+# Sample also tells the randomness. so if i set sample = True, then temerature tells how much randomness i want.
 
 
     # Extract valid JSON from output
@@ -113,27 +116,39 @@ Expected output (JSON only, no extra text):
     raise ValueError(f"Could not parse model output for paragraph. Full output:\n{result}")
 
 
+# ─────────────────────────────────────────────────────────────
+# Group concepts by priority  (overlap | paragraph-only | prev-only)
+def get_concept_sets(paragraph: str, prev_abstract: str):
+    para_kw = set(extract_concepts(paragraph))
+    prev_kw = set(extract_concepts(prev_abstract))
+
+    overlap   = sorted(para_kw & prev_kw)          # weight 3
+    para_only = sorted(para_kw - prev_kw)          # weight 2
+    prev_only = sorted(prev_kw - para_kw)          # weight 1
+    return overlap, para_only, prev_only
+# ─────────────────────────────────────────────────────────────
 
 
 # SciBERT embedding 
-# Put the model into evauation mode rather than training mode. (because i dont fine-tune or
 print("▶ Loading SciBERT embedder…")
 sci_model = SentenceTransformer("allenai/scibert_scivocab_uncased")
 sci_model.eval()
 
-# The input is text (string) and output is float
 def embed(text: str) -> list[float]:
-    # returns normalized embedding as numpy array
-    # normalize is useful for computing cosign similarity 
+    # returns normalized embedding
     vec = sci_model.encode(text, convert_to_numpy=True, normalize_embeddings=True)
     return vec.tolist()
 
-# This function takes computed vector and asks neo4j's vector index to compute top-k nearest papers
-# qvec is a list of floats 
-# Passing Python arguments k=top_k and vec=qvec → inside the Cypher, $k is replaced by top_k and $vec becomes the vector list.
-# each row gives out node (the matched paper node) and score using cosine distance 
-#  1.0 - score AS sim cosine similarity curiculation
-# Highest similarity comes first (ORDER)
+# Blend paragraph and previous-abstract embeddings
+def blended_vec(paragraph: str, prev_abstract: str,
+                w_para: float = 0.7, w_prev: float = 0.3) -> list[float]:
+    v_para = np.array(embed(paragraph))
+    v_prev = np.array(embed(prev_abstract))
+    combo  = w_para * v_para + w_prev * v_prev
+    combo /= np.linalg.norm(combo)       # re-normalize
+    return combo.tolist()
+
+
 def vector_search(qvec, top_k=25) -> pd.DataFrame:
     with driver.session() as s:
         rows = s.run(
@@ -146,9 +161,7 @@ def vector_search(qvec, top_k=25) -> pd.DataFrame:
         ).data()
     return pd.DataFrame(rows)
 
-# This function is to match the retrieved paper with id, title, year, sim,ilarity 
-# If there is no rows, return immediately
-# generate cypher query to match paper id with metadata
+
 def hydrate_paper_meta(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty: return df
     ids = df["id"].tolist()
@@ -196,6 +209,8 @@ ORDER BY p.year DESC
 # Filters out single word tems by keeping 2 o more words to reduce noise. Multi-word is always better no?
 # After filltering it out returns dataFrame
 # rows = s.run(BASE_CYPHER, terms=terms).data() this executes the BASE_CYPHER query and the pass the terms list into $terms
+
+
 def graph_search(concepts: list[str]) -> pd.DataFrame:
     terms = [c.lower() for c in concepts if len(c.split()) >= 2]
     if not terms:
@@ -204,6 +219,28 @@ def graph_search(concepts: list[str]) -> pd.DataFrame:
         rows = s.run(BASE_CYPHER, terms=terms).data()
     return pd.DataFrame(rows)
 
+# Weighted merge of three priority groups
+def weighted_graph_search(overlap, para_only, prev_only,
+                           top_k_each=100, w=(3,2,1)) -> pd.DataFrame:
+
+    def _query(terms):
+        if not terms:         # empty list → empty DataFrame
+            return pd.DataFrame(columns=["id","title","year"])
+        return graph_search(terms).head(top_k_each)
+
+    df_o = _query(overlap);    df_o["w"] = w[0]
+    df_p = _query(para_only);  df_p["w"] = w[1]
+    df_r = _query(prev_only);  df_r["w"] = w[2]
+
+    big = pd.concat([df_o, df_p, df_r], ignore_index=True)
+    if big.empty:
+        return big             # nothing matched
+
+    big["hit"] = 1
+    scored = (big.groupby(["id","title","year"], as_index=False)
+                   .agg(score=("w","sum"), hits=("hit","count"))
+                   .sort_values(["score","year"], ascending=[False,False]))
+    return scored.head(200)
 
 # Demo
 if __name__ == "__main__":
@@ -211,14 +248,22 @@ if __name__ == "__main__":
        "Recently, as advanced natural language processing techniques, Large Language Models (LLMs) with billion parameters have generated large impacts on various research fields such as Natural Language Processing (NLP), Computer Vision, and Molecule Discovery. Technically most existing LLMs are transformer-based models pre-trained on a vast amount of textual data from diverse sources, such as articles, books, websites, and other publicly available written materials. As the parameter size of LLMs continues to scale up with a larger training corpus, recent studies indicated that LLMs can lead to the emergence of remarkable capabilities. More specifically, LLMs have demonstrated the unprecedentedly powerful abilities of their fundamental responsibilities in language understanding and generation. These improvements enable LLMs to better comprehend human intentions and generate language responses that are more human-like in nature. Moreover, recent studies indicated that LLMs exhibit impressive generalization and reasoning capabilities, making LLMs better generalize to a variety of unseen tasks and domains. To be specific, instead of requiring extensive fine-tuning on each specific task, LLMs can apply their learned knowledge and reasoning skills to fit new tasks simply by providing appropriate instructions or a few task demonstrations. Advanced techniques such as in-context learning can further enhance such generalization performance of LLMs without being fine-tuned on specific downstream tasks. In addition, empowered by prompting strategies such as chain-of-thought, LLMs can generate the outputs with step-by-step reasoning in complicated decision-making processes.Hence, given their powerful abilities, LLMs demonstrate great potential to revolutionize recommender systems."
     )
 
-    concepts = extract_concepts(paragraph)
-    print("\n▶ Extracted concepts:\n", concepts)
+    prev_abstract = (
+    "With the prosperity of e-commerce and web applications, Recommender Systems (RecSys) have become an important component of our daily life, providing personalized suggestions that cater to user preferences. While Deep Neural Networks (DNNs) have made significant advancements in enhancing recommender systems by modeling user-item interactions and incorporating textual side information, DNN-based methods still face limitations, such as difficulties in understanding users' interests and capturing textual side information, inabilities in generalizing to various recommendation scenarios and reasoning on their predictions, etc. Meanwhile, the emergence of Large Language Models (LLMs), such as ChatGPT and GPT4, has revolutionized the fields of Natural Language Processing (NLP) and Artificial Intelligence (AI), due to their remarkable abilities in fundamental responsibilities of language understanding and generation, as well as impressive generalization and reasoning capabilities. As a result, recent studies have attempted to harness the power of LLMs to enhance recommender systems. Given the rapid evolution of this research direction in recommender systems, there is a pressing need for a systematic overview that summarizes existing LLM-empowered recommender systems, to provide researchers in relevant fields with an in-depth understanding. Therefore, in this paper, we conduct a comprehensive review of LLM-empowered recommender systems from various aspects including Pre-training, Fine-tuning, and Prompting. More specifically, we first introduce representative methods to harness the power of LLMs (as a feature encoder) for learning representations of users and items. Then, we review recent techniques of LLMs for enhancing recommender systems from three paradigms, namely pre-training, fine-tuning, and prompting. Finally, we comprehensively discuss future directions in this emerging field. "
+    )
+    
+    # -- extract concept groups
+    overlap, para_only, prev_only = get_concept_sets(paragraph, prev_abstract)
+    
+    # -- keyword-based graph search with weights
+    df_kw = weighted_graph_search(overlap, para_only, prev_only)
+    print("\n⚡ Top keyword hits:")
+    print(df_kw.head(20).to_string(index=False))
+    
+    # -- blended vector search
+    vcombo = blended_vec(paragraph, prev_abstract)
+    df_vec  = vector_search(vcombo, top_k=50)
+    df_vec  = hydrate_paper_meta(df_vec)
+    print("\n⚡ Top vector hits:")
+    print(df_vec.head(20).to_string(index=False, formatters={"sim":"{:.3f}".format}))
 
-    df_graph = graph_search(concepts)
-    print(f"\n⬇ Graph search ({len(df_graph)} hits):")
-    print(df_graph.head(25).to_string(index=False))
-
-    df_vec = vector_search(embed(paragraph), top_k=25)
-    df_vec = hydrate_paper_meta(df_vec)
-    print(f"\n⬇ Vector search ({len(df_vec)} hits):")
-    print(df_vec.head(25).to_string(index=False, formatters={"sim":"{:.3f}".format}))
