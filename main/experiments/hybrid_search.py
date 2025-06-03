@@ -29,6 +29,7 @@ model = AutoModelForCausalLM.from_pretrained(
 generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
 
 # Extract concepts with refined few-shot prompting
+# https://www.promptingguide.ai/techniques/cot
 def extract_concepts(paragraph: str):
     prompt = f"""
 You are an academic assistant of computer science field. Extract the most important research concepts (keywords of the from the paragraph wrapped in <TEXT> tags.
@@ -86,17 +87,15 @@ Now, without repeating the above examples, extract concepts for the following pa
 Expected output (JSON only, no extra text):
 
 """
-
+# Max new tokens are set to 600 to limit the LLM's answer (but the token is in addition to the input)
+# temperature tells what kind of output. For example, 0.0 tells always same output for the same input but 1.0 has balanced randomness. so 0.0 tells conssistent and accurate answers
+# Sample also tells the randomness. so if i set sample = True, then temerature tells how much randomness i want.
     result = generator(
         prompt,
         max_new_tokens=600,
         temperature=0.0,
         do_sample=False
     )[0]["generated_text"]
-
-# Max new tokens are set to 600 to limit the LLM's answer (but the token is in addition to the input)
-# temperature tells what kind of output. For example, 0.0 tells always same output for the same input but 1.0 has balanced randomness. so 0.0 tells conssistent and accurate answers
-# Sample also tells the randomness. so if i set sample = True, then temerature tells how much randomness i want.
 
 
     # Extract valid JSON from output
@@ -117,15 +116,24 @@ Expected output (JSON only, no extra text):
 
 
 # SciBERT embedding 
+# Put the model into evauation mode rather than training mode. (because i dont fine-tune or
 print("▶ Loading SciBERT embedder…")
 sci_model = SentenceTransformer("allenai/scibert_scivocab_uncased")
 sci_model.eval()
 
+# The input is text (string) and output is float
 def embed(text: str) -> list[float]:
-    # returns normalized embedding
+    # returns normalized embedding as numpy array
+    # normalize is useful for computing cosign similarity 
     vec = sci_model.encode(text, convert_to_numpy=True, normalize_embeddings=True)
     return vec.tolist()
 
+# This function takes computed vector and asks neo4j's vector index to compute top-k nearest papers
+# qvec is a list of floats 
+# Passing Python arguments k=top_k and vec=qvec → inside the Cypher, $k is replaced by top_k and $vec becomes the vector list.
+# each row gives out node (the matched paper node) and score using cosine distance 
+#  1.0 - score AS sim cosine similarity curiculation
+# Highest similarity comes first (ORDER)
 def vector_search(qvec, top_k=25) -> pd.DataFrame:
     with driver.session() as s:
         rows = s.run(
@@ -138,7 +146,9 @@ def vector_search(qvec, top_k=25) -> pd.DataFrame:
         ).data()
     return pd.DataFrame(rows)
 
-
+# This function is to match the retrieved paper with id, title, year, sim,ilarity 
+# If there is no rows, return immediately
+# generate cypher query to match paper id with metadata
 def hydrate_paper_meta(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty: return df
     ids = df["id"].tolist()
@@ -186,8 +196,6 @@ ORDER BY p.year DESC
 # Filters out single word tems by keeping 2 o more words to reduce noise. Multi-word is always better no?
 # After filltering it out returns dataFrame
 # rows = s.run(BASE_CYPHER, terms=terms).data() this executes the BASE_CYPHER query and the pass the terms list into $terms
-
-
 def graph_search(concepts: list[str]) -> pd.DataFrame:
     terms = [c.lower() for c in concepts if len(c.split()) >= 2]
     if not terms:
