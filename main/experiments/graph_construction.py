@@ -103,46 +103,72 @@ Expected:
 
 ––––– Your turn –––––
 
-Now extract triples for the following paragraph.  
+Now extract triples for the following paragraph. Do not limit to the words' examples provided. 
+Think by yourself based on the logic provided. 
+Especially edges, it does not have to be like example, but something verb which is wrriten or can connect noun.
 Return **only** the JSON list.
+Important: Output ONLY the JSON list. Do NOT add code fences, back-ticks, or commentary.
 
 <TEXT>
 {paragraph}
 </TEXT>
 """
 
-import ast, json, re
+import re, json, ast
 
-def _first_json_list_after(text, anchor="</TEXT>"):
-    """Return the first […] list that appears *after* the anchor tag."""
-    after = text.split(anchor, 1)[-1]          # everything after </TEXT>
-    m     = re.search(r"\[[\s\S]*?\]", after)  # non-greedy nearest list
-    return m.group(0) if m else None
+def _first_json_list_after(text: str, anchor: str = "</TEXT>") -> str:
+    # Get everything after </TEXT>
+    after = text.split(anchor, 1)[-1]
+    # Find all bracketed lists
+    blocks = re.findall(r"\[[\s\S]*?\]", after)
+    # Return the longest one (most likely the real output)
+    return max(blocks, key=len) if blocks else None
 
-def extract_triples(paragraph: str, generator):
-    prompt  = TRIPLE_PROMPT.format(paragraph=paragraph)
-    out     = generator(prompt,
-                        max_new_tokens=600,
-                        temperature=0.0,
-                        do_sample=False)[0]["generated_text"]
+def _sanitize(block: str) -> str:
+    # Remove backtick fences and whitespace
+    blk = block.replace("```json", "").replace("```", "").strip()
+    # Normalize quotes
+    blk = blk.replace("“", '"').replace("”", '"')
+    blk = re.sub(r"(?<!\\)'", '"', blk)
+    # Drop trailing commas before the closing bracket
+    blk = re.sub(r",\s*\]", "]", blk)
+    return blk
+def _balance_brackets(s: str) -> str:
+    open_count  = s.count('[')
+    close_count = s.count(']')
+    if open_count > close_count:
+        s += ']' * (open_count - close_count)
+    return s
+
+def _parse_triples(block: str):
+    blk = _sanitize(block)
+    blk = _balance_brackets(blk)    # ← auto-close any unbalanced lists
+    for loader in (json.loads, ast.literal_eval):
+        try:
+            data = loader(blk)
+            return [tuple(x) for x in data if len(x)==3]
+        except:
+            continue
+    return None
+
+
+def extract_triples(paragraph: str, generator) -> list[tuple[str,str,str]]:
+    prompt = TRIPLE_PROMPT.format(paragraph=paragraph)
+    out    = generator(prompt,
+                      max_new_tokens=800,
+                      temperature=0.0,
+                      do_sample=False)[0]["generated_text"]
 
     block = _first_json_list_after(out)
     if not block:
-        print("‼️  No JSON block found");  return []
+        print("No JSON block found after </TEXT>")
+        return []
 
-    # Remove ```json fences if present
-    block = block.replace("```json", "").replace("```", "").strip()
-
-    # Try strict JSON, then Python-style list
-    for loader in (json.loads, ast.literal_eval):
-        try:
-            triples = loader(block)
-            return [tuple(t) for t in triples if len(t) == 3]
-        except Exception:
-            continue
-
-    print("‼️  Failed to parse triples");  return []
-
+    triples = _parse_triples(block)
+    if triples is None:
+        print("Still could not parse block:\n", block[:200])
+        return []
+    return triples
 
 # ------ 3. build the in-memory graph ---------------------------
 def build_paragraph_kg(paragraph: str, generator) -> nx.MultiDiGraph:
