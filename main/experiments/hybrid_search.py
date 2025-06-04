@@ -30,6 +30,7 @@ generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
 
 # Extract concepts with refined few-shot prompting
 # https://www.promptingguide.ai/techniques/cot
+# https://www.mercity.ai/blog-post/guide-to-chain-of-thought-prompting#what-is-chain-of-thought-prompting
 def extract_concepts(paragraph: str):
     prompt = f"""
 You are an academic assistant of computer science field. Extract the most important research concepts (keywords of the from the paragraph wrapped in <TEXT> tags.
