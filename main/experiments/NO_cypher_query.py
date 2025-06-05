@@ -34,10 +34,48 @@ def build_bm25_query(ctx: dict) -> str:
 
     return " AND ".join(parts) if len(parts) > 1 else parts[0]
 
+CYPHER_ROLE_AND = """
+MATCH (p:Paper)
+WHERE
+  // METHOD  – main_topic  (e.g. “large language model”)
+  EXISTS {
+      MATCH (p)-[:HAS_TOPIC|HAS_TOPIC]->(m)
+      WHERE toLower(m.name) CONTAINS toLower($method)
+  }
+  AND
+  // SOLUTION – first technology  (e.g. “knowledge graph”)
+  EXISTS {
+      MATCH (p)-[:HAS_TOPIC|HAS_FOS]->(s)
+      WHERE toLower(s.name) CONTAINS toLower($solution)
+  }
+  AND
+  // DOMAIN/TASK – any subtopic or research_domain  (e.g. “recommender”, “tourism”)
+  EXISTS {
+      MATCH (p)-[:HAS_TOPIC|HAS_FOS]->(d)
+      WHERE ANY(dom IN $domains WHERE toLower(d.name) CONTAINS dom)
+  }
+RETURN p.id  AS pid,
+       p.title AS title,
+       p.year  AS year,
+       0       AS hop,
+       1.0     AS sim          // highest confidence
+LIMIT $lim
+"""
+def _role_terms(ctx):
+    method   = ctx["main_topic"][0] if isinstance(ctx["main_topic"], list) else ctx["main_topic"]
+    solution = ctx["technologies"][0] if ctx["technologies"] else ""
+    # keep only ≥2-token domain phrases for precision
+    domains  = [d.lower() for d in ctx["subtopics"] + [ctx["research_domain"]] if len(d.split()) >= 2]
+    return method, solution, domains
+
 
 # ----------  BM25 Cypher template ---------------------------------------
 CYPHER_BM25 = """
-CALL db.index.fulltext.queryNodes('paper_fulltext', $query, $lim)
+CALL db.index.fulltext.queryNodes(
+        'paper_fulltext',
+        $lucene,
+        {limit: $lim}            // map, not scalar
+)
 YIELD node, score
 RETURN node.id    AS pid,
        node.title AS title,
@@ -85,7 +123,7 @@ def build_term_lists(ctx: dict) -> dict:
 
 # (A) literal FoS & Topic match
 CYPHER_FOS_TOPIC = """
-MATCH (p:Paper)-[:HAS_FOS|:HAS_TOPIC]->(x)
+MATCH (p:Paper)-[:HAS_FOS|HAS_TOPIC]->(x)
 WHERE ANY(t IN $terms WHERE toLower(x.name) CONTAINS t)
 RETURN p.id AS pid, p.title AS title, p.year AS year,
        1 AS hop, 1.0 AS sim
@@ -102,7 +140,7 @@ RETURN node.id AS pid, node.title AS title, node.year AS year,
 
 # (C) one-hop CITES expansion of (A) results
 CYPHER_1HOP = """
-MATCH (seed:Paper)-[:HAS_FOS|:HAS_TOPIC]->(x)
+MATCH (seed:Paper)-[:HAS_FOS|HAS_TOPIC]->(x)
 WHERE ANY(t IN $terms WHERE toLower(x.name) CONTAINS t)
 MATCH (seed)-[:CITES]->(p:Paper)
 RETURN p.id  AS pid, p.title AS title, p.year AS year,
@@ -110,39 +148,58 @@ RETURN p.id  AS pid, p.title AS title, p.year AS year,
 LIMIT $lim
 """
 
-def retrieve_candidates(ctx: dict,
-                        top_n_each: int = 50) -> pd.DataFrame:
-    """
-    Return DataFrame with columns: pid, title, year, hop, sim, source.
-    Adds a 'bm25' source using role-weighted full-text search.
-    """
-    parts = build_term_lists(ctx)
-    terms = parts["keywords"] or [w.lower() for w in ctx["main_topic"]]
+def retrieve_candidates(ctx: dict, top_n_each: int = 40) -> pd.DataFrame:
+    parts    = build_term_lists(ctx)
+    method, solution, domains = _role_terms(ctx)
     bm25_query = build_bm25_query(ctx)
-
     rows = []
+
     with driver.session() as s:
-        # (A) topic match
-        rows += s.run(CYPHER_FOS_TOPIC, terms=terms, lim=top_n_each).data()
-        for r in rows[-top_n_each:]:
-            r["source"] = "topic_match"
+        # ── Tier-1  strict role AND  ───────────────────────────────────
+        rows1 = s.run(
+            CYPHER_ROLE_AND,
+            method=method,
+            solution=solution,
+            domains=domains,
+            lim=top_n_each
+        ).data()
+        for r in rows1:
+            r["source"] = "role_and"
+        rows += rows1
 
-        # (B) embedding
-        rows += s.run(CYPHER_EMBED,
-                      vec=parts["paragraph_vec"].tolist(),
-                      lim=top_n_each).data()
-        for r in rows[-top_n_each:]:
-            r["source"] = "embed"
+        # if strict match produced ≥8 papers we can stop early
+        if len(rows1) < 8:
+            # ── fallback (your original three branches) ───────────────
+            terms = parts["keywords"] or [method.lower()]
+            rows += s.run(CYPHER_FOS_TOPIC, terms=terms, lim=top_n_each).data()
+            for r in rows[-top_n_each:]:
+                r["source"] = "topic_match"
 
-        # (C) one-hop citations
-        rows += s.run(CYPHER_1HOP, terms=terms, lim=top_n_each).data()
-        for r in rows[-top_n_each:]:
-            r["source"] = "one_hop"
+            rows += s.run(CYPHER_EMBED,
+                          vec=parts["paragraph_vec"].tolist(),
+                          lim=top_n_each).data()
+            for r in rows[-top_n_each:]:
+                r["source"] = "embed"
 
-        # (D) BM25 full-text
-        rows += s.run(CYPHER_BM25, query=bm25_query, lim=top_n_each).data()
-        for r in rows[-top_n_each:]:
-            r["source"] = "bm25"
+            rows += s.run(CYPHER_1HOP, terms=terms, lim=top_n_each).data()
+            for r in rows[-top_n_each:]:
+                r["source"] = "one_hop"
 
+            rows += s.run(CYPHER_BM25,
+                          lucene=bm25_query,
+                          lim=top_n_each).data()
+            for r in rows[-top_n_each:]:
+                r["source"] = "bm25"
+
+    # ── combine & dedupe ───────────────────────────────────────────────
     df = pd.DataFrame(rows).drop_duplicates("pid")
-    return df
+
+    # optional: simple final score (role-AND first)
+    df["score"] = (
+          (df["source"] == "role_and") * 1.0
+        + (df["source"] == "topic_match") * 0.8
+        + (df["source"] == "bm25") * (df["sim"] / df["sim"].max())
+        + (df["source"] == "embed") * 0.6 * df["sim"]
+        + (df["source"] == "one_hop") * 0.3
+    )
+    return df.sort_values("score", ascending=False).head( top_n_each * 2 )
