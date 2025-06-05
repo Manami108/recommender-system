@@ -11,6 +11,41 @@ driver = GraphDatabase.driver(
     )
 )
 
+# ----------  BM25 helper -------------------------------------------------
+def build_bm25_query(ctx: dict) -> str:
+    """
+    Convert method/domain/solution roles into a Lucene query string.
+    """
+    method   = ctx["main_topic"][0] if isinstance(ctx["main_topic"], list) else ctx["main_topic"]
+    solution = ctx["technologies"][0] if ctx["technologies"] else ""
+    domains  = ctx["subtopics"] + [ctx["research_domain"]]
+
+    def q(x):            # quote multi-word phrases
+        return f'"{x}"' if " " in x else x
+
+    parts = []
+    if method:
+        parts.append(f"{q(method)}^3")           # strongest boost
+    if solution:
+        parts.append(f"{q(solution)}^2")
+    dom_tokens = [q(d) for d in domains if d]
+    if dom_tokens:
+        parts.append("(" + " OR ".join(dom_tokens) + ")")
+
+    return " AND ".join(parts) if len(parts) > 1 else parts[0]
+
+
+# ----------  BM25 Cypher template ---------------------------------------
+CYPHER_BM25 = """
+CALL db.index.fulltext.queryNodes('paper_fulltext', $query, $lim)
+YIELD node, score
+RETURN node.id    AS pid,
+       node.title AS title,
+       node.year  AS year,
+       0          AS hop,
+       score      AS sim
+"""
+
 # ── Text embedder (same SciBERT you used for paper embeddings) ───────────
 sci_model = SentenceTransformer("allenai/scibert_scivocab_uncased")
 sci_model.eval()
@@ -78,39 +113,36 @@ LIMIT $lim
 def retrieve_candidates(ctx: dict,
                         top_n_each: int = 50) -> pd.DataFrame:
     """
-    Return a DataFrame with columns: pid, title, year, hop, sim, source
+    Return DataFrame with columns: pid, title, year, hop, sim, source.
+    Adds a 'bm25' source using role-weighted full-text search.
     """
     parts = build_term_lists(ctx)
-    terms = parts["keywords"]
-    if not terms:
-        terms = [w.lower() for w in ctx["main_topic"]]  # fallback
-    
+    terms = parts["keywords"] or [w.lower() for w in ctx["main_topic"]]
+    bm25_query = build_bm25_query(ctx)
+
     rows = []
     with driver.session() as s:
-        # (A) FoS / Topic direct match
-        rows += s.run(CYPHER_FOS_TOPIC,
-                      terms=terms,
-                      lim=top_n_each
-                     ).data()
-        # flag source
+        # (A) topic match
+        rows += s.run(CYPHER_FOS_TOPIC, terms=terms, lim=top_n_each).data()
         for r in rows[-top_n_each:]:
             r["source"] = "topic_match"
 
-        # (B) embedding similarity
+        # (B) embedding
         rows += s.run(CYPHER_EMBED,
                       vec=parts["paragraph_vec"].tolist(),
-                      lim=top_n_each
-                     ).data()
+                      lim=top_n_each).data()
         for r in rows[-top_n_each:]:
             r["source"] = "embed"
 
         # (C) one-hop citations
-        rows += s.run(CYPHER_1HOP,
-                      terms=terms,
-                      lim=top_n_each
-                     ).data()
+        rows += s.run(CYPHER_1HOP, terms=terms, lim=top_n_each).data()
         for r in rows[-top_n_each:]:
             r["source"] = "one_hop"
-    
+
+        # (D) BM25 full-text
+        rows += s.run(CYPHER_BM25, query=bm25_query, lim=top_n_each).data()
+        for r in rows[-top_n_each:]:
+            r["source"] = "bm25"
+
     df = pd.DataFrame(rows).drop_duplicates("pid")
     return df
