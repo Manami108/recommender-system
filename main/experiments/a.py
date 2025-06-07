@@ -1,26 +1,12 @@
-# inspect_topics.py
-from neo4j import GraphDatabase
-import os
+import requests
 
-driver = GraphDatabase.driver(
-    os.getenv("NEO4J_URI", "bolt://localhost:7687"),
-    auth=(os.getenv("NEO4J_USER","neo4j"),
-          os.getenv("NEO4J_PASS","Manami1008"))
-)
+base_url = "https://api.semanticscholar.org/datasets/v1/release/"
 
-with driver.session() as session:
-    # Get some Topic nodes
-    tops = session.run(
-        "MATCH (t:Topic) RETURN t.name AS name LIMIT 50"
-    ).data()
-    print("=== Sample Topics ===")
-    for r in tops:
-        print("•", r["name"])
+# Set the release id
+release_id = "2025-05-27"
 
-    # Get some FoS nodes
-    foss = session.run(
-        "MATCH (f:FieldOfStudy) RETURN f.name AS name LIMIT 50"
-    ).data()
-    print("\n=== Sample Fields of Study (FoS) ===")
-    for r in foss:
-        print("•", r["name"])
+# Make a request to get datasets available the latest release
+response = requests.get(base_url + release_id)
+
+# Print the response data
+print(response.json())
