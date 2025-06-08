@@ -1,25 +1,3 @@
-"""
-chain_of_thought_analysis.py
-───────────────────────────
-Stage‑1 processing for the new pipeline
-  ▸ Local intent / coherence per sliding‑window chunk
-  ▸ Paragraph‑level intent & cohesion
-  ▸ Global document‑level overview + coherence
-
-Everything is wrapped in three helper functions and a `run_cot_analysis` orchestrator.
-A demo runnable with `python chain_of_thought_analysis.py` is included at the bottom.
-
-Prompts live under ./prompts/ as plain‑text files:
-  prompts/
-    ├─ local_intent.prompt
-    ├─ paragraph_intent.prompt
-    └─ global_coherence.prompt
-
-Each file contains your few‑shot examples followed by a single "INPUT:" token where
-`{chunk}` or `{paragraph}` will be substituted, and ends with "OUTPUT:" so the model
-responds only with a JSON object.  The loader below falls back to a minimal one‑line
-prompt if the file is missing so the script remains importable.
-"""
 from __future__ import annotations
 import json, sys
 from pathlib import Path
@@ -38,13 +16,18 @@ _model     = AutoModelForCausalLM.from_pretrained(
     torch_dtype="auto",
     device_map="auto",
 )
-_gen = pipeline("text-generation", model=_model, tokenizer=_tokenizer)
+_gen = pipeline(
+    "text-generation",
+    model=_model,
+    tokenizer=_tokenizer,
+    return_full_text=False,
+)
 
 # ─────────────────────────────────────────────
 # 1. Prompt loading helpers
 # ─────────────────────────────────────────────
 PROMPTS_DIR = Path(__file__).parent / "prompts"
-PROMPTS_DIR.mkdir(parents=True, exist_ok=True)  # ensure directory exists
+PROMPTS_DIR.mkdir(parents=True, exist_ok=True)
 
 def _load_prompt(name: str, fallback: str) -> str:
     path = PROMPTS_DIR / name
@@ -53,83 +36,111 @@ def _load_prompt(name: str, fallback: str) -> str:
     except FileNotFoundError:
         return fallback
 
-# Minimal fall‑back prompts (overwrite with real few‑shot examples!)
-LOCAL_PROMPT      = _load_prompt(
+LOCAL_PROMPT = _load_prompt(
     "local_intent.prompt",
     "INPUT:\n{chunk}\nOUTPUT: {\"local_intent\":null, \"local_coherence\":null}"
 )
-PARAGRAPH_PROMPT  = _load_prompt(
+PARAGRAPH_PROMPT = _load_prompt(
     "paragraph_intent.prompt",
     "INPUT:\n{paragraph}\nOUTPUT: {\"paragraph_intent\":null, \"paragraph_cohesion\":null}"
 )
-GLOBAL_PROMPT     = _load_prompt(
+GLOBAL_PROMPT = _load_prompt(
     "global_coherence.prompt",
     "INPUT:\n{payload}\nOUTPUT: {\"global_overview\":null, \"global_coherence\":null}"
 )
 
-# Expected keys in the JSON blocks
-KEYS_LOCAL      = {"local_intent", "local_coherence"}
-KEYS_PARAGRAPH  = {"paragraph_intent", "paragraph_cohesion"}
-KEYS_GLOBAL     = {"global_overview", "global_coherence"}
+KEYS_LOCAL = {"local_intent", "local_coherence"}
+KEYS_PARAGRAPH = {"paragraph_intent", "paragraph_cohesion"}
+KEYS_GLOBAL = {"global_overview", "global_coherence"}
 
 # ─────────────────────────────────────────────
-# 2. Utility – extract trailing JSON from LLM output
+# 2. Utility – extract JSON from LLM output robustly
 # ─────────────────────────────────────────────
 
 def _extract_json(raw: str) -> Dict:
-    lo = raw.rfind("{")
-    hi = raw.rfind("}")
-    if lo == -1 or hi == -1 or hi < lo:
-        raise ValueError("No JSON block found in model output.\nLLM said:\n" + raw)
-    return json.loads(raw[lo : hi + 1])
+    # find the first '{' in the generated text
+    start = raw.find("{")
+    if start == -1:
+        print("=== LLM output (no JSON found) ===\n" + raw + "\n=== end ===")
+        raise ValueError("No JSON block found in model output.")
+
+    # walk through to find matching closing brace
+    level = 0
+    end = None
+    for i, ch in enumerate(raw[start:], start):
+        if ch == '{':
+            level += 1
+        elif ch == '}':
+            level -= 1
+            if level == 0:
+                end = i
+                break
+
+    if end is None:
+        print("=== LLM output (unbalanced braces) ===\n" + raw + "\n=== end ===")
+        raise ValueError("Unbalanced braces in model output.")
+
+    json_str = raw[start : end + 1]
+    try:
+        return json.loads(json_str)
+    except json.JSONDecodeError as e:
+        print("=== Failed to parse JSON: ===\n" + json_str + "\nError: " + str(e))
+        raise
 
 # ─────────────────────────────────────────────
 # 3. Analysis functions
 # ─────────────────────────────────────────────
 
 def analyze_local(chunks: List[str]) -> List[Dict]:
-    """Run the local‑intent prompt on each chunk."""
-    signals = []
+    signals: List[Dict] = []
     for idx, ch in enumerate(chunks):
         prompt = LOCAL_PROMPT.replace("{chunk}", ch)
-        raw = _gen(prompt, max_new_tokens=512, temperature=0.0, do_sample=False)[0]["generated_text"]
+        result = _gen(prompt, max_new_tokens=512)
+        out = result[0]
+        raw = out.get("generated_text", "")
         data = _extract_json(raw)
-        missing = KEYS_LOCAL - data.keys()
-        if missing:
-            raise ValueError(f"Local JSON missing {missing} in chunk {idx}")
+        if not KEYS_LOCAL.issubset(data.keys()):
+            raise ValueError(f"Local JSON missing {KEYS_LOCAL - data.keys()} in chunk {idx}")
         signals.append(data)
     return signals
 
 def analyze_paragraph(paragraph: str) -> Dict:
     prompt = PARAGRAPH_PROMPT.replace("{paragraph}", paragraph)
-    raw = _gen(prompt, max_new_tokens=512, temperature=0.0, do_sample=False)[0]["generated_text"]
+    result = _gen(prompt, max_new_tokens=512)
+    out = result[0]
+    raw = out.get("generated_text", "")
     data = _extract_json(raw)
-    missing = KEYS_PARAGRAPH - data.keys()
-    if missing:
-        raise ValueError(f"Paragraph JSON missing {missing}")
+    if not KEYS_PARAGRAPH.issubset(data.keys()):
+        raise ValueError(f"Paragraph JSON missing {KEYS_PARAGRAPH - data.keys()}")
     return data
 
 def analyze_global(local_signals: List[Dict], paragraph_signal: Dict) -> Dict:
-    payload_json = json.dumps({"local": local_signals, "paragraph": paragraph_signal}, ensure_ascii=False)
-    prompt = GLOBAL_PROMPT.replace("{payload}", payload_json)
-    raw = _gen(prompt, max_new_tokens=512, temperature=0.0, do_sample=False)[0]["generated_text"]
+    payload = json.dumps({"local": local_signals, "paragraph": paragraph_signal}, ensure_ascii=False)
+    prompt = GLOBAL_PROMPT.replace("{payload}", payload)
+    result = _gen(prompt, max_new_tokens=512)
+    out = result[0]
+    raw = out.get("generated_text", "")
     data = _extract_json(raw)
-    missing = KEYS_GLOBAL - data.keys()
-    if missing:
-        raise ValueError(f"Global JSON missing {missing}")
+    if not KEYS_GLOBAL.issubset(data.keys()):
+        raise ValueError(f"Global JSON missing {KEYS_GLOBAL - data.keys()}")
     return data
 
 def run_cot_analysis(chunks: List[str], paragraph: str) -> Dict:
-    local  = analyze_local(chunks)
-    para   = analyze_paragraph(paragraph)
-    global_sig = analyze_global(local, para)
-    return {"local_signals": local, "paragraph_signal": para, "global_signal": global_sig}
+    local_sig = analyze_local(chunks)
+    para_sig = analyze_paragraph(paragraph)
+    global_sig = analyze_global(local_sig, para_sig)
+    return {
+        "local_signals": local_sig,
+        "paragraph_signal": para_sig,
+        "global_signal": global_sig,
+    }
 
 # ─────────────────────────────────────────────
-# 4. Demo  (python chain_of_thought_analysis.py)
+# 4. Demo
 # ─────────────────────────────────────────────
 if __name__ == "__main__":
-    # Inline demo paragraph
+    from chunking import clean_text, chunk_tokens
+
     demo_para = """
 This paper accordingly proposes a novel Context-guided Triple Matching (CTM),
 while the third component missing from the pairwise matching is adopted as a prior context.
@@ -146,15 +157,11 @@ representations to estimate the matching score. In addition to the triple matchi
 consider to adopt a contrastive regularization in capturing the subtle semantic differences among
 answer candidates. The aim is to maximize the similarity of features from correct triple(s) while
 pushing away that of distractive ones, that has been neglected by existing methods.
-    """.strip()
-
-    # Stage‑0  preprocess → sliding‑window token chunks
-    from chunking import clean_text, chunk_tokens
+""".strip()
 
     cleaned = clean_text(demo_para)
-    chunks  = chunk_tokens(cleaned, _tokenizer, win=128, stride=64)
+    chunks = chunk_tokens(cleaned, _tokenizer, win=128, stride=64)
 
-    print("Found", len(chunks), "token chunks → running CoT analysis …", file=sys.stderr)
-
+    print(f"Found {len(chunks)} token chunks → running CoT analysis …", file=sys.stderr)
     signals = run_cot_analysis(chunks, cleaned)
     print(json.dumps(signals, indent=2, ensure_ascii=False))
