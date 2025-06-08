@@ -25,8 +25,9 @@ FULLTEXT_INDEX = "paper_fulltext"
 def embed(text: str) -> np.ndarray:
     return _sci.encode(text, convert_to_numpy=True, normalize_embeddings=True)
 
-# It retrieves top-k papers which title and abstract matches user query
+# It retrieves top-k papers which title and abstract matches user query (BM25 so keywords matching based using TFiDF concepts)
 # I think 25 is not a good idea because its in the way limit reranking candidates later on. 
+# I wrote 0 as hop because it is gonna be exact matching and i will do hop traversal later on. 
 def recall_fulltext(query: str, k: int = 25) -> pd.DataFrame:
     rows = []
     with driver.session() as session:
@@ -41,7 +42,9 @@ def recall_fulltext(query: str, k: int = 25) -> pd.DataFrame:
         ).data()
     return pd.DataFrame(results)
 
-
+# This is embedding search 
+# Cosign similarity is computed by (1.0 - score)
+# i dont know how much i should set for similarity threshold. 
 def recall_vector(vec: np.ndarray, k: int = 25, sim_threshold: float = 0.0) -> pd.DataFrame:
     rows = []
     with driver.session() as session:
@@ -58,12 +61,8 @@ def recall_vector(vec: np.ndarray, k: int = 25, sim_threshold: float = 0.0) -> p
         ).data()
     return pd.DataFrame(results)
 
-
+# For each chunk, BM25 and embedding are done but i dont know if its good way of doing so. 
 def recall_by_chunks(chunks: list[str], k_vec: int=40, k_bm25: int=40, sim_th: float=0.3) -> pd.DataFrame:
-    """
-    For each chunk string, perform BM25 + vector recall and
-    aggregate unique candidates keeping best score per pid/src.
-    """
     rows = []
     for ch in chunks:
         rows += recall_fulltext(ch, k=k_bm25).assign(src='bm25').to_dict('records')
@@ -82,10 +81,8 @@ def recall_by_chunks(chunks: list[str], k_vec: int=40, k_bm25: int=40, sim_th: f
     )
     return df
 
+# This is for fetching metadata after candidate retrieval
 def fetch_metadata(pids: list[str]) -> pd.DataFrame:
-    """
-    Fetch title, abstract, authors, year for given pids.
-    """
     if not pids:
         return pd.DataFrame(columns=['pid','title','abstract','authors','year'])
     query = (
