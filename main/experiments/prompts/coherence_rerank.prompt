@@ -61,6 +61,11 @@ Example output format:
 }
 ```
 
-Insert the actual paragraph below with delimiters, then begin your analysis.
+PARAGRAPH  
+<TEXT>  
+{paragraph}  
+</TEXT>  
 
-<<<PARAGRAPH>>>
+<<<PAR>>>
+
+# After thinking in <COT>, output your JSON on a new line.

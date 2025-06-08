@@ -44,16 +44,36 @@ def llm_rerank(paragraph: str, candidates: pd.DataFrame, k: int = 10) -> pd.Data
     Returns:
         DataFrame with added 'llm_score', sorted desc, top-k rows
     """
-    # 1) Build prompt
-    prompt = PROMPT_TEMPLATE.replace("<<<PARAGRAPH>>>", paragraph)
+# 1) Build prompt using str.format()
+# wrap the paragraph exactly as your prompt expects
+    wrapped = f"<TEXT>\n{paragraph.strip()}\n</TEXT>"
+    prompt  = PROMPT_TEMPLATE.replace("<<<PAR>>>", wrapped)
 
     # 2) Generate CoT JSON
     raw = gen(prompt)[0]["generated_text"]
-    lo, hi = raw.rfind("{"), raw.rfind("}")
+
+    # 2a) Robust JSON extraction: count braces
+    def extract_json_block(text: str) -> str:
+        start = text.find("{")
+        if start == -1:
+            raise ValueError("No JSON object found in LLM output.")
+        depth = 0
+        for i, ch in enumerate(text[start:], start):
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return text[start:i+1]
+        raise ValueError("Unbalanced JSON braces in LLM output.")
+
     try:
-        coh = json.loads(raw[lo:hi+1])
+        json_str = extract_json_block(raw)
+        coh = json.loads(json_str)
     except Exception as e:
-        raise RuntimeError(f"Parsing JSON failed: {e}\nRaw output:\n{raw}")
+        raise RuntimeError(
+            f"Parsing JSON failed: {e}\nRaw output:\n{raw}"
+        )
 
     # 3) Extract window topics
     topics = {t.lower() for win in coh.get('windows', []) for t in win.get('topics', [])}
