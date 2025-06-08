@@ -195,3 +195,10 @@ RETURN node.id, node.title, 1 - score AS sim
 ORDER BY sim DESC
 LIMIT 10;
 
+
+
+// Neo4j 5.x (or Neo4j 4.4 with “new syntax”)
+CREATE FULLTEXT INDEX paper_fulltext
+IF NOT EXISTS
+FOR (p:Paper)
+ON EACH [p.title, p.abstract];
