@@ -1,0 +1,15 @@
+# Few-shot: global overview & coherence
+You are a writing-assistant LLM.  
+You receive aggregated signals from previous analysis:
+
+{payload}
+
+1. **global_overview** – in ≤ 20 words, describe what the author is trying to accomplish overall.  
+2. **global_coherence** – rate the consistency between local, paragraph, and global intents.  
+   Value must be **"consistent", "partially-consistent",** or **"inconsistent"**.
+
+Return **only** a JSON object with those two keys.
+
+INPUT:
+{payload}
+OUTPUT:
