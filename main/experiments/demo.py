@@ -9,13 +9,6 @@ from rerank_llm import llm_rerank
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Demo script: full pipeline with LLaMA reranking
-# 1) Clean & chunk paragraph
-# 2) Combined recall via BM25 & embedding
-# 3) Citation expansion (2-hop)
-# 4) Aggregate & dedupe candidates
-# 5) Fetch metadata (abstract)
-# 6) LLaMA CoT rerank to top-k
-# 7) Output final recommendations
 # ─────────────────────────────────────────────────────────────────────────────
 
 def main():
@@ -38,45 +31,47 @@ def main():
     pushing away that of distractive ones, that has been neglected by existing methods.
     """
 
-
-    # 2) Clean & chunk
+    # 2) Clean & chunk the paragraph
     cleaned = clean_text(paragraph)
     tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3-8B-Instruct")
     chunks = chunk_tokens(cleaned, tokenizer, win=128, stride=64)
-    print(f"Generated {len(chunks)} chunks")
+    print(f"1) Generated {len(chunks)} chunks")
 
-    # 3) Combined recall
+    # 3) Combined recall via BM25 & embedding
     rec_df = recall_by_chunks(chunks, k_bm25=40, k_vec=40, sim_th=0.30)
-    print(f"Recall candidates: {len(rec_df)}")
+    print(f"2) Retrieved {len(rec_df)} recall candidates")
 
-    # 4) Citation expansion
+    # 4) 2-hop citation expansion
     seed_pids = rec_df['pid'].tolist()
     cit_df = expand_citation_hops(seed_pids, max_hops=2, limit_per_hop=100)
-    print(f"Citation-hop candidates: {len(cit_df)}")
+    print(f"3) Retrieved {len(cit_df)} citation-hop candidates")
 
     # 5) Merge & dedupe
-    combined = pd.concat([rec_df.assign(source='recall'),
-                          cit_df.assign(source='citation', sim=np.nan)],
-                         ignore_index=True)
+    combined = pd.concat([
+        rec_df.assign(source='recall'),
+        cit_df.assign(source='citation', sim=np.nan)
+    ], ignore_index=True)
     combined = combined.sort_values(['hop','sim'], ascending=[True, False])
-    combined = combined.drop_duplicates('pid').reset_index(drop=True)
-    print(f"Merged candidates: {len(combined)}")
+    combined = combined.drop_duplicates('pid', keep='first').reset_index(drop=True)
+    print(f"4) Merged to {len(combined)} unique candidates")
 
-    # 6) Fetch abstracts
+    # 6) Fetch abstracts for reranking
     meta = fetch_metadata(combined['pid'].tolist())
     df = combined.merge(meta[['pid','abstract']], on='pid', how='left')
 
-    # 7) Rerank via LLaMA CoT
-    topk = llm_rerank(paragraph, df[['pid','title','abstract']], k=10)
-    print("\nTop 10 recommendations after LLaMA rerank:")
+    # 7) LLaMA rerank via topic overlap
+    rerank_df = df[['pid','title','abstract']]
+    topk = llm_rerank(paragraph, rerank_df, k=10)
+    print("5) Top 10 recommendations after LLaMA rerank:")
     print(topk[['pid','title','llm_score']].to_string(index=False))
 
-    # 8) Save
+    # 8) Save final results
     out_csv = os.getenv('OUTPUT_CSV', 'final_recommendations.csv')
     topk.to_csv(out_csv, index=False)
-    print(f"\nSaved final recommendations to {out_csv}")
+    print(f"6) Saved final recommendations to {out_csv}")
 
 if __name__ == '__main__':
     main()
+
 
 
