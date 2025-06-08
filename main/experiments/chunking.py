@@ -16,12 +16,18 @@ import nltk
 from transformers import AutoTokenizer
 
 # Make sure the Punkt model is available the first time
+# Attempt to download your custom punkt_tab (will be silently skipped if not found)
 try:
-    _ = nltk.data.find("tokenizers/punkt")
+    nltk.download('punkt_tab', quiet=True)
+except Exception:
+    pass
+
+# Ensure the standard Punkt sentence tokenizer is installed
+try:
+    nltk.data.find("tokenizers/punkt")
 except LookupError:
     nltk.download("punkt", quiet=True)
 
-nltk.download('punkt_tab') 
 
 # ─────────────────────────────────────────────
 # 1. Basic clean-up
