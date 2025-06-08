@@ -4,8 +4,10 @@ import pandas as pd
 
 from transformers import AutoTokenizer
 from chunking import clean_text, chunk_tokens
-from recall import recall_by_chunks, expand_citation_hops, fetch_metadata
+from recall import recall_by_chunks, fetch_metadata
+from hop_reasoning import multi_hop_topic_citation_reasoning
 from rerank_llm import llm_rerank
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Demo script: full pipeline with LLaMA reranking
@@ -41,15 +43,19 @@ def main():
     rec_df = recall_by_chunks(chunks, k_bm25=40, k_vec=40, sim_th=0.30)
     print(f"2) Retrieved {len(rec_df)} recall candidates")
 
-    # 4) 2-hop citation expansion
+    # 4) Multi-hop reasoning (topics/FoS + citations)
     seed_pids = rec_df['pid'].tolist()
-    cit_df = expand_citation_hops(seed_pids, max_hops=2, limit_per_hop=100)
-    print(f"3) Retrieved {len(cit_df)} citation-hop candidates")
+    cit_df = multi_hop_topic_citation_reasoning(
+        seed_pids,
+        max_topic_hops=2,
+        top_n=100
+        )
+    print(f"3) Retrieved {len(cit_df)} reasoning candidates")
 
     # 5) Merge & dedupe
     combined = pd.concat([
         rec_df.assign(source='recall'),
-        cit_df.assign(source='citation', sim=np.nan)
+        cit_df.assign(source='reasoning', sim=np.nan)
     ], ignore_index=True)
     combined = combined.sort_values(['hop','sim'], ascending=[True, False])
     combined = combined.drop_duplicates('pid', keep='first').reset_index(drop=True)
