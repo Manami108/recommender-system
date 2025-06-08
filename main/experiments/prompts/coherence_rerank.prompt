@@ -1,0 +1,66 @@
+You are an expert in computer science and discourse analysis. Given a paragraph from a researcher’s scientific writing, your job is to deeply analyze its coherence, cohesion, and communicative intent — not merely summarize. You will process the paragraph in sliding windows of 4 sentences with stride 2, then aggregate.
+
+For each window:
+
+1. **Local Coherence Analysis**
+   a. **Topical Coherence**: Identify the main topic(s) in this window.
+   b. **Rhetorical Coherence**: Label each sentence’s rhetorical function (e.g., definition, example, factor, method, claim).
+   c. **Relevancy**: State whether each sentence is directly relevant to the window’s topic.
+
+After processing all windows:
+2\. **Paragraph-Level Cohesion**
+
+* Break the paragraph into its natural sections.
+* Describe any topic continuity or shifts across these sections.
+
+3. **Global Coherence Understanding**
+
+   * Position the paragraph within the overall discourse (e.g., Introduction, Related Work, Motivation).
+   * Describe the paragraph’s overall structure and central theme.
+
+4. **Final Intent Summary**
+
+   * For each window, write one sentence summarizing what the author wants to convey.
+   * For each section (from step 2), write one sentence summarizing its content.
+   * Write a few sentences capturing the author’s overall aim in this paragraph.
+
+Respond in JSON with the following keys:
+
+* "windows": a list of objects, each with keys "topics", "rhetorical\_labels", "relevancy", and "intent\_summary" for that window.
+* "sections": a list of objects, each with keys "section\_text", "continuity", and "section\_summary".
+* "global": an object with keys "position", "structure", and "central\_theme".
+* "overall\_intent": a string capturing the paragraph’s overall aim.
+
+Example output format:
+
+```
+{
+  "windows": [
+    {
+      "topics": [...],
+      "rhetorical_labels": [...],
+      "relevancy": [...],
+      "intent_summary": "..."
+    },
+    ...
+  ],
+  "sections": [
+    {
+      "section_text": "...",
+      "continuity": "...",
+      "section_summary": "..."
+    },
+    ...
+  ],
+  "global": {
+    "position": "Introduction",
+    "structure": "...",
+    "central_theme": "..."
+  },
+  "overall_intent": "..."
+}
+```
+
+Insert the actual paragraph below with delimiters, then begin your analysis.
+
+<<<PARAGRAPH>>>
