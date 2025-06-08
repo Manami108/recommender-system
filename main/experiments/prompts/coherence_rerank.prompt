@@ -61,11 +61,12 @@ Example output format:
 }
 ```
 
+
 PARAGRAPH  
 <TEXT>  
-{paragraph}  
+<<<PAR>>>  
 </TEXT>  
 
-<<<PAR>>>
-
-# After thinking in <COT>, output your JSON on a new line.
+# After thinking in <COT>, output your JSON on a new line.  
+# **Output ONLY the JSON object—do not include any other text or examples.**  
+<END>
