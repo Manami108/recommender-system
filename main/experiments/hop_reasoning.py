@@ -57,7 +57,6 @@ def multi_hop_topic_citation_reasoning(
         results += topic1
 
         # Citation hop
-        # --- citation hop (fixed) ---
         cite = session.run(
             '''
             UNWIND $pids AS seed_id

@@ -1,0 +1,23 @@
+You are an expert in discourse analysis. Use the following paragraph context:
+
+<<<CONTEXT_JSON>>>
+
+Now rate each candidate paper’s abstract on three scales:
+- local coherence: how well does it align at the window‐level?
+- paragraph cohesion: how well does it fit the paragraph’s flow?
+- global coherence: how well does it match the overall intent and position?
+
+Return a JSON array of objects, each:
+  {
+    "pid": "...",
+    "local_score": 0.0–1.0,
+    "paragraph_score": 0.0–1.0,
+    "global_score": 0.0–1.0,
+    "final_score": 0.0–1.0
+  }
+
+Here are the candidates:
+
+<<<CANDIDATES>>>
+
+<END>
