@@ -4,10 +4,9 @@ import pandas as pd
 
 from transformers import AutoTokenizer
 from chunking import clean_text, chunk_tokens
-from recall import recall_by_chunks, fetch_metadata
+from recall import recall_by_chunks, recall_fulltext, recall_vector, embed, fetch_metadata
 from hop_reasoning import multi_hop_topic_citation_reasoning
 from rerank_llm import llm_rerank
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Demo script: full pipeline with LLaMA reranking
@@ -39,9 +38,28 @@ def main():
     chunks = chunk_tokens(cleaned, tokenizer, win=128, stride=64)
     print(f"1) Generated {len(chunks)} chunks")
 
-    # 3) Combined recall via BM25 & embedding
-    rec_df = recall_by_chunks(chunks, k_bm25=40, k_vec=40, sim_th=0.30)
-    print(f"2) Retrieved {len(rec_df)} recall candidates")
+      # 3a) Global/full-paragraph recall
+    #    – BM25 on the entire paragraph
+    full_bm25 = recall_fulltext(cleaned, k=40) \
+                    .assign(source='bm25_full')
+    #    – Embedding on the entire paragraph
+    full_vec = recall_vector(embed(cleaned), k=40, sim_threshold=0.30) \
+                    .assign(source='embed_full')
+    print(f"2a) Full-paragraph BM25  hits: {len(full_bm25)}, embed hits: {len(full_vec)}")
+
+    # 3b) Chunk-based recall
+    chunk_df = recall_by_chunks(chunks, k_bm25=40, k_vec=40, sim_th=0.30) \
+                    .assign(source='chunked')
+    print(f"2b) Chunk-based recall candidates: {len(chunk_df)}")
+
+    # 3c) Combine all recall results and dedupe best per paper
+    rec_df = pd.concat([full_bm25, full_vec, chunk_df], ignore_index=True)
+    rec_df = (
+        rec_df.sort_values(['source','sim'], ascending=[True, False])
+              .drop_duplicates('pid', keep='first')
+              .reset_index(drop=True)
+    )
+    print(f"2) Total unique recall candidates after merging full + chunks: {len(rec_df)}")
 
     # 4) Multi-hop reasoning (topics/FoS + citations)
     seed_pids = rec_df['pid'].tolist()
