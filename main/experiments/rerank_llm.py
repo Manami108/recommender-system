@@ -31,17 +31,24 @@ def llm_contextual_rerank(
 ) -> pd.DataFrame:
     """Return top-k candidates with LLM-derived coherence score."""
 
-    # Build candidate block (same order as DataFrame)
-    cand_lines = [
-        f"{row.pid}\nTitle: {row.title}\nAbstract: {row.abstract.strip()}"
-        for _, row in candidates.iterrows()
-    ]
+    # ── Build candidate block (same order as DataFrame) ────────────────
+    cand_lines = []
+    for _, row in candidates.iterrows():
+        # fall back to empty string if abstract is missing
+        abs_txt = (row.abstract or "").strip()
+        cand_lines.append(
+            f"{row.pid}\nTitle: {row.title}\nAbstract: {abs_txt}"
+        )
+
+    # join them _after_ the loop
     cand_block = "\n\n".join(cand_lines)
 
-    # Fill template
-    prompt = (_SCORE_TMPL
-              .replace("<<<PARAGRAPH>>>", paragraph.strip())
-              .replace("<<<CANDIDATES>>>", cand_block))
+    # ── Fill the prompt ────────────────────────────────────────────────
+    prompt = (
+        _SCORE_TMPL
+        .replace("<<<PARAGRAPH>>>", paragraph.strip())
+        .replace("<<<CANDIDATES>>>", cand_block)
+    )
 
     raw = _gen(prompt)[0]["generated_text"]
     m   = _JSON_RE.search(raw)
