@@ -61,7 +61,8 @@ def recall_vector(vec: np.ndarray, k: int = 25, sim_threshold: float = 0.0) -> p
         ).data()
     return pd.DataFrame(results)
 
-# For each chunk, BM25 and embedding are done but i dont know if its good way of doing so. 
+# For each chunk, BM25 and embedding are done. 
+# i search candidates based on chunking and full exact matching too.
 def recall_by_chunks(chunks: list[str], k_vec: int=40, k_bm25: int=40, sim_th: float=0.3) -> pd.DataFrame:
     rows = []
     for ch in chunks:
