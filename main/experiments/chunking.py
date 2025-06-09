@@ -82,7 +82,7 @@ def chunk_sentences(text: str,
 # while the third component missing from the pairwise matching is adopted as a prior context.
 # The proposed triple matching is present as a hierarchical attention flow to adequately capture
 # the semantic relationship. Specifically, given a candidate triple, we first employ (any) one
-# component from the triple as the prior context. Then we apply the bidirectional attention to
+# component from the triple as tzhe prior context. Then we apply the bidirectional attention to
 # calculate the correlation between context and the other two components separately. Afterwards,
 # another attention layer is utilized to leverage two above correlations to form an aggregated
 # context-aware representation. In this way, the model is able to gather more comprehensive
