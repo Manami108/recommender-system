@@ -1,43 +1,34 @@
 import os
 import numpy as np
 import pandas as pd
-from neo4j import GraphDatabase
-from sentence_transformers import SentenceTransformer
+from neo4j import GraphDatabase # Neo4j
+from sentence_transformers import SentenceTransformer # SciBERT
+from hop_reasoning import multi_hop_topic_citation_reasoning
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Neo4j connection (singleton)
-# URI, USER, PASS via env: NEO4J_URI, NEO4J_USER, NEO4J_PASS
-# Default: bolt://localhost:7687, neo4j/neo4j
-# ─────────────────────────────────────────────────────────────────────────────
+
+# call neo4j driver 
+# Need to modify when i want to switch to API
 driver = GraphDatabase.driver(
     os.getenv("NEO4J_URI", "bolt://localhost:7687"),
     auth=(os.getenv("NEO4J_USER", "neo4j"), os.getenv("NEO4J_PASS", "Manami1008"))
 )
 
-# ─────────────────────────────────────────────────────────────────────────────
-# SciBERT embedder (singleton)
-# ─────────────────────────────────────────────────────────────────────────────
+# call sciBERT
 _sci = SentenceTransformer("allenai/scibert_scivocab_uncased")
 _sci.eval()
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Index names in Neo4j
-# ─────────────────────────────────────────────────────────────────────────────
+# paper vec: vector index stored in neo4j, paper fulltext: full text (BM25) index
 VECTOR_INDEX   = "paper_vec"
 FULLTEXT_INDEX = "paper_fulltext"
 
-
+# compute user query embedding, and normalizing is true for cosign similarity computation efficiency. 
 def embed(text: str) -> np.ndarray:
-    """
-    Compute normalized SciBERT embedding for text.
-    """
     return _sci.encode(text, convert_to_numpy=True, normalize_embeddings=True)
 
-
+# It retrieves top-k papers which title and abstract matches user query (BM25 so keywords matching based using TFiDF concepts)
+# I think 25 is not a good idea because its in the way limit reranking candidates later on. 
+# I wrote 0 as hop because it is gonna be exact matching and i will do hop traversal later on. 
 def recall_fulltext(query: str, k: int = 25) -> pd.DataFrame:
-    """
-    BM25 recall via full-text index.
-    """
     rows = []
     with driver.session() as session:
         results = session.run(
@@ -51,11 +42,10 @@ def recall_fulltext(query: str, k: int = 25) -> pd.DataFrame:
         ).data()
     return pd.DataFrame(results)
 
-
+# This is embedding search 
+# Cosign similarity is computed by (1.0 - score)
+# i dont know how much i should set for similarity threshold. 
 def recall_vector(vec: np.ndarray, k: int = 25, sim_threshold: float = 0.0) -> pd.DataFrame:
-    """
-    Vector recall via cosine similarity (1 - Neo4j distance).
-    """
     rows = []
     with driver.session() as session:
         results = session.run(
@@ -71,12 +61,9 @@ def recall_vector(vec: np.ndarray, k: int = 25, sim_threshold: float = 0.0) -> p
         ).data()
     return pd.DataFrame(results)
 
-
+# For each chunk, BM25 and embedding are done. 
+# i search candidates based on chunking and full exact matching too.
 def recall_by_chunks(chunks: list[str], k_vec: int=40, k_bm25: int=40, sim_th: float=0.3) -> pd.DataFrame:
-    """
-    For each chunk string, perform BM25 + vector recall and
-    aggregate unique candidates keeping best score per pid/src.
-    """
     rows = []
     for ch in chunks:
         rows += recall_fulltext(ch, k=k_bm25).assign(src='bm25').to_dict('records')
@@ -95,48 +82,8 @@ def recall_by_chunks(chunks: list[str], k_vec: int=40, k_bm25: int=40, sim_th: f
     )
     return df
 
-
-def expand_citation_hops(pids: list[str], max_hops: int=2, limit_per_hop: int=100) -> pd.DataFrame:
-    """
-    Breadth-first citation expansion up to 2 hops.
-    """
-    if not pids or max_hops<1:
-        return pd.DataFrame(columns=['pid','title','year','hop'])
-    rows = []
-    with driver.session() as session:
-        # hop1
-        rows += session.run(
-            """
-            UNWIND $pids AS id
-            MATCH (p:Paper {id:id})-[:CITES]->(c1:Paper)
-            RETURN DISTINCT c1.id AS pid, c1.title AS title,
-                   c1.year AS year, 1 AS hop
-            LIMIT $lim
-            """,
-            pids=pids, lim=limit_per_hop
-        ).data()
-        # hop2
-        if max_hops>=2:
-            rows += session.run(
-                """
-                UNWIND $pids AS id
-                MATCH (p:Paper {id:id})-[:CITES]->()-[:CITES]->(c2:Paper)
-                RETURN DISTINCT c2.id AS pid, c2.title AS title,
-                       c2.year AS year, 2 AS hop
-                LIMIT $lim
-                """,
-                pids=pids, lim=limit_per_hop
-            ).data()
-    df = pd.DataFrame(rows)
-    if df.empty:
-        return df
-    return df.sort_values('hop').drop_duplicates('pid').reset_index(drop=True)
-
-
+# This is for fetching metadata after all retrieval
 def fetch_metadata(pids: list[str]) -> pd.DataFrame:
-    """
-    Fetch title, abstract, authors, year for given pids.
-    """
     if not pids:
         return pd.DataFrame(columns=['pid','title','abstract','authors','year'])
     query = (

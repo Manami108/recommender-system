@@ -1,99 +1,98 @@
-import json
+# rerank_llm.py
+from __future__ import annotations
+import json, re, logging
 from pathlib import Path
+
 import pandas as pd
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Load the few-shot CoT coherence/rerank prompt
-# (make sure your prompt ends with the <<<PAR>>> marker and an <END> tag)
-# ─────────────────────────────────────────────────────────────────────────────
-PROMPT_PATH     = Path(__file__).parent / "prompts" / "coherence_rerank.prompt"
-PROMPT_TEMPLATE = PROMPT_PATH.read_text()
+logging.basicConfig(level=logging.INFO)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Initialize LLaMA-3 8B
-# ─────────────────────────────────────────────────────────────────────────────
-MODEL_ID  = "meta-llama/Meta-Llama-3-8B-Instruct"
-tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
-model     = AutoModelForCausalLM.from_pretrained(
-    MODEL_ID,
-    torch_dtype="auto",
-    device_map="auto"
-)
-gen = pipeline(
+# ── 1. model & generator ───────────────────────────────────────────
+_MODEL_ID = "meta-llama/Meta-Llama-3-8B-Instruct"
+_tok  = AutoTokenizer.from_pretrained(_MODEL_ID)
+_mdl  = AutoModelForCausalLM.from_pretrained(
+            _MODEL_ID,
+            device_map="auto",
+            torch_dtype="auto")
+_gen  = pipeline(
     "text-generation",
-    model=model,
-    tokenizer=tokenizer,
-    max_new_tokens=1500,
+    model=_mdl,
+    tokenizer=_tok,
+    max_new_tokens=1000,
     do_sample=False,
-    pad_token_id=tokenizer.eos_token_id,
-    return_full_text=False    
+    pad_token_id=_tok.eos_token_id,
+    return_full_text=False
 )
 
-# ─────────────────────────────────────────────────────────────────────────────
-def extract_json_block(text: str) -> str:
-    """
-    Scan from the first '{' to the matching '}', returning that substring.
-    """
-    start = text.find("{")
-    if start == -1:
-        raise ValueError("No JSON object found in LLM output.")
-    depth = 0
-    for i, ch in enumerate(text[start:], start):
-        if ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0:
-                return text[start:i+1]
-    raise ValueError("Unbalanced JSON braces in LLM output.")
-# ─────────────────────────────────────────────────────────────────────────────
+# ── 2. load prompt template once ──────────────────────────────────
+_SCORE_TMPL = Path("prompts/coherence_score.prompt").read_text()
 
+# Try the RESULT-tags first…
+_JSON_RE = re.compile(r"<RESULT>\s*(\[[\s\S]*?\])\s*</RESULT>", re.MULTILINE)
 
-def llm_rerank(paragraph: str, candidates: pd.DataFrame, k: int = 10) -> pd.DataFrame:
-    """
-    1) Inject the paragraph into your prompt at <<<PAR>>>.
-    2) Generate CoT and extract the first JSON block.
-    3) Score & rerank the candidate abstracts by topic overlap.
-    """
-    # 1) Build prompt
-    # 1) Wrap your paragraph exactly as your prompt expects:
-    wrapped = f"<TEXT>\n{paragraph.strip()}\n</TEXT>"
+def batch_df(df: pd.DataFrame, batch_size: int):
+    """Yield successive DataFrame chunks of size batch_size."""
+    for i in range(0, len(df), batch_size):
+        yield df.iloc[i : i + batch_size]
 
-    # 2) Replace the one unique token—leave all {…} in the template untouched
-    prompt = PROMPT_TEMPLATE.replace("<<<PAR>>>", paragraph.strip())
+def llm_contextual_rerank(
+    paragraph: str,
+    candidates: pd.DataFrame,
+    k: int = 10,
+    batch_size: int = 10
+) -> pd.DataFrame:
+    """Return top-k candidates with LLM-derived coherence scores in batches."""
+    all_scores = []
 
-    # DEBUG: inspect what we actually send
-    print("— DEBUG PROMPT START —")
-    print(prompt)
-    print("— DEBUG PROMPT END —")
+    for batch in batch_df(candidates, batch_size):
+        # Build the candidate block
+        cand_lines = []
+        for _, row in batch.iterrows():
+            abs_txt = (row.abstract or "").strip()
+            cand_lines.append(
+                f"{row.pid}\nTitle: {row.title}\nAbstract: {abs_txt}"
+            )
+        cand_block = "\n\n".join(cand_lines)
 
-    # 2) Generate + truncate at <END>
-    raw = gen(prompt)[0]["generated_text"]
-    raw = raw.split("<END>")[0]
+        # Fill prompt
+        prompt = (
+            _SCORE_TMPL
+            .replace("<<<PARAGRAPH>>>", paragraph.strip())
+            .replace("<<<CANDIDATES>>>", cand_block)
+        )
 
-    # 3) Extract JSON
-    try:
-        json_str = extract_json_block(raw)
-        coh      = json.loads(json_str)
-    except Exception as e:
-        # Dump for debugging
-        print("=== RAW OUTPUT ===")
-        print(raw)
-        print("=== END RAW OUTPUT ===")
-        raise RuntimeError(f"JSON parse error: {e}")
+        # Generate
+        raw = _gen(prompt)[0]["generated_text"]
 
-    # 4) Gather window topics
-    topics = {t.lower() for win in coh.get("windows", []) for t in win.get("topics", [])}
+        # 1) Try extracting via <RESULT> tags
+        m = _JSON_RE.search(raw)
+        if m:
+            json_text = m.group(1)
+        else:
+            # 2) Fallback: strip everything before first '[' and after last ']'
+            start = raw.find('[')
+            end   = raw.rfind(']') + 1
+            if start == -1 or end == 0:
+                logging.warning("No JSON array found in LLM output. Raw:\n%s", raw)
+                continue
+            json_text = raw[start:end]
 
-    # 5) Score candidates by overlap
-    scores = []
-    for _, row in candidates.iterrows():
-        abst   = row.get("abstract", "") or ""
-        tokens = {w.lower().strip(".,") for w in abst.split()}
-        scores.append(len(topics & tokens))
+        # Parse JSON
+        try:
+            batch_scores = pd.DataFrame(json.loads(json_text))
+        except Exception as e:
+            logging.warning("JSON parsing failed: %s\nJSON slice:\n%s", e, json_text)
+            continue
 
-    # 6) Return top-k
-    df = candidates.copy()
-    df["llm_score"] = scores
-    return df.sort_values("llm_score", ascending=False).head(k)
+        all_scores.append(batch_scores)
+
+    if not all_scores:
+        raise ValueError("No valid scores returned from any batch.")
+
+    # Merge all batches and pick top-k by final_score
+    scores_df = pd.concat(all_scores, ignore_index=True)
+    ranked = candidates.merge(scores_df, on="pid", how="inner")
+    ranked = ranked.sort_values("final_score", ascending=False)
+
+    return ranked.head(k)
