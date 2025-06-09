@@ -63,31 +63,31 @@ def main():
     )
     print(f"2) Total unique recall candidates: {len(rec_df)}")
 
-    # 4) Multi-hop reasoning (topics/FoS + citations)
-    seed_pids = rec_df['pid'].tolist()
-    cit_df = multi_hop_topic_citation_reasoning(
-        seed_pids,
-        max_topic_hops=2,
-        top_n=100
-    )
-    print(f"3) Retrieved {len(cit_df)} reasoning candidates")
+    # # 4) Multi-hop reasoning (topics/FoS + citations)
+    # seed_pids = rec_df['pid'].tolist()
+    # cit_df = multi_hop_topic_citation_reasoning(
+    #     seed_pids,
+    #     max_topic_hops=2,
+    #     top_n=100
+    # )
+    # print(f"3) Retrieved {len(cit_df)} reasoning candidates")
 
-    # 5) Merge reasoning + recall & dedupe
-    combined = pd.concat([
-        rec_df.assign(source='recall'),
-        cit_df.assign(source='reasoning', sim=np.nan)
-    ], ignore_index=True)
-    combined = (
-        combined
-        .sort_values(['hop','sim'], ascending=[True, False])
-        .drop_duplicates('pid', keep='first')
-        .reset_index(drop=True)
-    )
-    print(f"4) Merged to {len(combined)} unique candidates")
+    # # 5) Merge reasoning + recall & dedupe
+    # combined = pd.concat([
+    #     rec_df.assign(source='recall'),
+    #     cit_df.assign(source='reasoning', sim=np.nan)
+    # ], ignore_index=True)
+    # combined = (
+    #     combined
+    #     .sort_values(['hop','sim'], ascending=[True, False])
+    #     .drop_duplicates('pid', keep='first')
+    #     .reset_index(drop=True)
+    # )
+    # print(f"4) Merged to {len(combined)} unique candidates")
 
     # 6) Fetch abstracts for reranking
-    meta = fetch_metadata(combined['pid'].tolist())
-    df   = combined.merge(meta[['pid','abstract']], on='pid', how='left')
+    meta = fetch_metadata(rec_df['pid'].tolist())
+    df   = rec_df.merge(meta[['pid','abstract']], on='pid', how='left')
 
     # 7) LLaMA contextual coherence rerank
     reranked = llm_contextual_rerank(paragraph, df[['pid','title','abstract']])
