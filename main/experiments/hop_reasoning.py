@@ -2,9 +2,7 @@ import os
 import pandas as pd
 from neo4j import GraphDatabase
 
-#──────────────────────────────────────────────────────────────────────────────
-# Neo4j connection (reuse existing driver settings)
-#──────────────────────────────────────────────────────────────────────────────
+# call database
 driver = GraphDatabase.driver(
     os.getenv("NEO4J_URI", "bolt://localhost:7687"),
     auth=(
@@ -12,6 +10,7 @@ driver = GraphDatabase.driver(
         os.getenv("NEO4J_PASS", "Manami1008")
     )
 )
+
 
 def multi_hop_topic_citation_reasoning(
     pids: list[str],
@@ -54,6 +53,7 @@ def multi_hop_topic_citation_reasoning(
         results += topic1
 
         # Citation hop
+        # --- citation hop (fixed) ---
         cite = session.run(
             '''
             UNWIND $pids AS seed_id
@@ -61,6 +61,7 @@ def multi_hop_topic_citation_reasoning(
             OPTIONAL MATCH (citing:Paper)-[:CITES]->(seed)
             WITH collect(DISTINCT cited) + collect(DISTINCT citing) AS cand
             UNWIND cand AS other
+            WITH other
             WHERE other.id IS NOT NULL AND NOT other.id IN $pids
             RETURN other.id AS pid,
                    other.title AS title,
@@ -70,9 +71,12 @@ def multi_hop_topic_citation_reasoning(
                    'cite' AS src
             ORDER BY year DESC
             LIMIT $top_n
-            '''
-        , pids=pids, top_n=top_n).data()
+            ''',
+            pids=pids,
+            top_n=top_n
+        ).data()
         results += cite
+
 
         # Topic/FoS Hop 2
         if max_topic_hops >= 2 and topic1:

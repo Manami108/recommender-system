@@ -33,6 +33,7 @@ def main():
     """
 
     # 2) Clean & chunk the paragraph
+    # Now, im using token level chunking but i dont know if its good or not. 
     cleaned = clean_text(paragraph)
     tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3-8B-Instruct")
     chunks = chunk_tokens(cleaned, tokenizer, win=128, stride=64)
