@@ -12,7 +12,7 @@ from recall import (
     fetch_metadata,
 )
 from hop_reasoning import multi_hop_topic_citation_reasoning
-from rerank_llm import llm_coherence_score   # <— updated import
+from rerank_llm import llm_contextual_rerank
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Demo script: full pipeline with LLaMA contextual coherence reranking
@@ -90,7 +90,7 @@ def main():
     df   = combined.merge(meta[['pid','abstract']], on='pid', how='left')
 
     # 7) LLaMA contextual coherence rerank
-    reranked = llm_coherence_score(paragraph, df[['pid','title','abstract']])
+    reranked = llm_contextual_rerank(paragraph, df[['pid','title','abstract']])
     topk     = reranked.head(10)
     print("5) Top 10 recommendations after contextual coherence rerank:")
     print(topk[['pid','title','final_score']].to_string(index=False))
