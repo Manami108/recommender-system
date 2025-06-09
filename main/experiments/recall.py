@@ -81,7 +81,7 @@ def recall_by_chunks(chunks: list[str], k_vec: int=40, k_bm25: int=40, sim_th: f
     )
     return df
 
-# This is for fetching metadata after candidate retrieval
+# This is for fetching metadata after all retrieval
 def fetch_metadata(pids: list[str]) -> pd.DataFrame:
     if not pids:
         return pd.DataFrame(columns=['pid','title','abstract','authors','year'])
