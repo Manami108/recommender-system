@@ -11,7 +11,11 @@ driver = GraphDatabase.driver(
     )
 )
 
-
+# combination of two different hop-based expansions 
+# hop 1: topic -> paper
+# hop 2: topic -> paper -> topic -> paper
+# hop 1: seed -> cites -> other 
+# So when i say two hop max, include all
 def multi_hop_topic_citation_reasoning(
     pids: list[str],
     max_topic_hops: int = 2,
@@ -22,7 +26,7 @@ def multi_hop_topic_citation_reasoning(
 
     - Topic/FoS hops:
       * Hop 1: seed → Topic/FoS → other papers
-      * Hop 2: seed → Topic/FoS → intermediate → Topic/FoS → other papers
+      * Hop 2: seed → Topic/FoS → intermediate → Topic/FoS → other papers //maybe unneccesary 
     - Citation hop (one hop in either direction): seed ↔ CITES ↔ other papers
 
     Returns a DataFrame with columns:
@@ -79,25 +83,25 @@ def multi_hop_topic_citation_reasoning(
 
 
         # Topic/FoS Hop 2
-        if max_topic_hops >= 2 and topic1:
-            hop1_ids = [r['pid'] for r in topic1]
-            topic2 = session.run(
-                '''
-                UNWIND $hop1_ids AS mid_id
-                MATCH (mid:Paper {id: mid_id})-[:HAS_TOPIC|:HAS_FOS]->(t2)<-[:HAS_TOPIC|:HAS_FOS]-(other:Paper)
-                WHERE other.id <> mid_id AND NOT other.id IN $pids
-                WITH other, COUNT(DISTINCT t2) AS shared_count
-                RETURN other.id AS pid,
-                       other.title AS title,
-                       other.year AS year,
-                       2 AS hop,
-                       shared_count,
-                       'topic' AS src
-                ORDER BY shared_count DESC, year DESC
-                LIMIT $top_n
-                '''
-            , hop1_ids=hop1_ids, pids=pids, top_n=top_n).data()
-            results += topic2
+        # if max_topic_hops >= 2 and topic1:
+        #     hop1_ids = [r['pid'] for r in topic1]
+        #     topic2 = session.run(
+        #         '''
+        #         UNWIND $hop1_ids AS mid_id
+        #         MATCH (mid:Paper {id: mid_id})-[:HAS_TOPIC|:HAS_FOS]->(t2)<-[:HAS_TOPIC|:HAS_FOS]-(other:Paper)
+        #         WHERE other.id <> mid_id AND NOT other.id IN $pids
+        #         WITH other, COUNT(DISTINCT t2) AS shared_count
+        #         RETURN other.id AS pid,
+        #                other.title AS title,
+        #                other.year AS year,
+        #                2 AS hop,
+        #                shared_count,
+        #                'topic' AS src
+        #         ORDER BY shared_count DESC, year DESC
+        #         LIMIT $top_n
+        #         '''
+        #     , hop1_ids=hop1_ids, pids=pids, top_n=top_n).data()
+        #     results += topic2
 
     df = pd.DataFrame(results)
     if df.empty:
