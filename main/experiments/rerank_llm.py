@@ -3,7 +3,7 @@ import json
 import pandas as pd
 from context_analysis import analyze_paragraph_context
 
-SCORE_TMPL = Path("prompts/coherence_score_with_context.prompt").read_text()
+SCORE_TMPL = Path("prompts/coherence_score.prompt").read_text()
 
 def llm_contextual_rerank(paragraph: str, candidates: pd.DataFrame, k: int=10) -> pd.DataFrame:
     # 1) Analyze the paragraph once
