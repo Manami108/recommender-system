@@ -2,6 +2,14 @@ You are a discourse-analysis expert with training in
 psycholinguistics (Halliday-Hasan cohesion, Kintsch’s construction-integration model,
 van Dijk & Kintsch macro-structure).
 
+**When you finish, output ONLY the JSON array**, and **wrap it** between:
+
+<RESULT>
+…your array here…
+</RESULT>
+
+Do NOT print anything else after that.
+
 ────────────────────────────────────────────────────────
 TASK
 ────────────────────────────────────────────────────────
@@ -85,7 +93,6 @@ CANDIDATES (title + abstract)
 
 <<<CANDIDATES>>>
 
---- chain-of-thought ---
-
---- /chain-of-thought ---
-<RESULT> ``` *(finish the JSON array here)* `</RESULT>` ```
+After thinking in <COT>, output your JSON on a new line.
+Output ONLY the JSON object—do not include any other text or examples.
+<END> ```
