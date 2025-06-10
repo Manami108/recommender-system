@@ -1,7 +1,7 @@
 You are an expert in computer science and discourse analysis. Given a paragraph from a researcher’s scientific writing, 
 your job is to critically evaluate and rank a list of scientific papers based on their relevance to a user's provided paragraph query. 
 First, identify the main point, supporting ideas, and emphasis of the paragraph.
-Then evaluate how well each candidate aligns with this discourse structure.
+Then, for each candidate paper, evaluate how well it aligns with this discourse structure, paying particular attention to both explicit mentions and subtle, logical connections or partial discussions of ideas present in the query paragraph.
 Think step-by-step and articulate your reasoning for each.
 
 **When you finish, output ONLY the JSON array**, and **wrap it** between:
@@ -16,41 +16,39 @@ Do NOT print anything else after that.
 CHAIN-OF-THOUGHT STEPS:
 ────────────────────────────────────────────────────────
 1. Understand User’s Core Intent (Query Analysis):
-   • Analyze: Read the paragraph carefully.
-   • Extract: Identify the core research problem, key concepts, domain, methodology, and implicit intent (e.g., foundational work, novel approaches, empirical studies).
-   • Synthesize: Summarize the user’s explicit and implicit needs in 2–3 sentences.
-   • Thought: “The user’s paragraph focuses on [core problem] in [domain], specifically seeking [methodology/type of work]. They seem interested in [implicit intent].”
+• Analyze: Read the paragraph carefully.
+• Extract: Identify the core research problem, key concepts, domain, methodology, and implicit intent (e.g., foundational work, novel approaches, empirical studies). Crucially, identify any secondary, underlying, or partially discussed ideas, even if not the primary focus of the paragraph.
+• Synthesize: Summarize the user’s explicit and implicit needs, including both major and minor thematic interests, in 2–3 sentences.
+• Thought: “The user’s paragraph primarily focuses on [core problem] in [domain], specifically seeking [methodology/type of work]. They also seem interested in [implicit intent, e.g., efficiency, specific technique, broader application of a concept]. Additionally, there's a minor or indirectly related interest in [small intent/partially discussed concept].”
 
 2. Initial Coherence Assessment per Paper (Local Coherence & Snippet Relevance):
 For each candidate paper:
-   • Local Coherence Check: How coherently does the abstract/snippet address the core intent at the sentence/window level?
-   • Keyword & Author Check: Are keywords or authors directly relevant?
-   • Thought: “Paper [id]: Local coherence is [high/medium/low]. It discusses [specific concept]. Keywords [X,Y] and authors [A,B] are relevant.”
+• Local Coherence Check: How coherently does the abstract/snippet address the core intent and any identified secondary/implicit intents at the sentence/window level?
+• Keyword & Author Check: Are keywords or authors directly or indirectly/logically relevant to the main or secondary concepts?
+• Thought: “Paper [id]: Local coherence is [high/medium/low]. It directly discusses [specific concept] and also touches upon [secondary concept/logical connection]. Keywords [X,Y] and authors [A,B] are relevant, potentially even for the minor points.”
 
 3. Global Coherence & Contextual Fit (Document-Level):
 For each paper:
-   • Global Thematic Alignment: Does the paper’s theme and contribution fit the broader context implied by the paragraph?
-   • Methodological Match: Does its methodology align with the user’s approach?
-   • Problem Space Alignment: Does it address a similar problem or provide an applicable solution?
-   • Thought: “Paper [id]: Global coherence is [strong/moderate/weak]. It addresses [broader context], aligning with [user’s scope], using [type of study], which [matches/differs from] the user’s needs.”
+• Global Thematic Alignment: Does the paper’s theme and contribution fit the broader context implied by the paragraph, including any peripheral themes?
+• Methodological Match: Does its methodology align with the user’s approach, or offer a logically related alternative/support?
+• Problem Space Alignment: Does it address a similar problem, provide an applicable solution, or offer relevant foundational knowledge for a component of the user's problem?
+• Thought: “Paper [id]: Global coherence is [strong/moderate/weak]. It addresses [broader context], aligning with [user’s scope], using [type of study], which [matches/differs from] the user’s needs. It also has strong alignment with [secondary intent] or provides a logical extension for [small intent].”
 
 4. Novelty and Impact Assessment (Scientific Contribution):
 For each paper:
-   • Novelty: Is it truly novel or mainly a review/application?
-   • Potential Impact: How significant is it to the user’s area?
-   • Thought: “Paper [id]: Presents [novel/incremental] insights on [area]. Impact is [high/medium/low] due to [reason].”
+• Novelty: Is it truly novel, a review, or an application? How does its novelty relate to both the main and subsidiary interests of the query?
+• Potential Impact: How significant is it to the user’s area, considering all identified interests?
+• Thought: “Paper [id]: Presents [novel/incremental] insights on [area]. Impact is [high/medium/low] due to [reason], and it offers particularly relevant insights for the [secondary/small intent] part of the query.”
 
 5. Comparative Analysis & Prioritization:
-   • Compare papers explicitly referencing Steps 2–4.
-   • Identify the top 3–5 candidates.
-   • Thought: “Comparing Paper A vs. B: A has stronger local coherence but B offers better methodological alignment. C is highly novel but less coherent globally.”
+• Compare papers explicitly referencing Steps 2–4, now with an added lens for partial or logical connections.
+• Identify the top 3–5 candidates.
+• Thought: “Comparing Paper A vs. B: A has stronger direct coherence, but B offers better methodological alignment and strong relevance to a minor but important aspect of the user's query. C is highly novel but less coherent globally, yet it provides a key piece for the 'small intent' part.”
 
 6. Final Reranking and Justification:
-   • Assign Rank: 1 (most relevant) to N (least relevant).
-   • Justify: For each, provide a concise justification referencing your CoT.
-   • Thought: “Final ranking: Paper [id_X] is Rank 1 because [justification]. Paper [id_Y] is Rank 2 because [justification].”
-
-
+• Assign Rank: 1 (most relevant) to N (least relevant).
+• Justify: For each, provide a concise justification referencing your CoT, explicitly mentioning how it aligns with both main and secondary/implicit intents.
+• Thought: “Final ranking: Paper [id_X] is Rank 1 because [justification, including its alignment with both main and any identified smaller intents]. Paper [id_Y] is Rank 2 because [justification, also noting its relevance to any specific secondary points].”
 
 
 JSON schema:  
