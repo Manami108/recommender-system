@@ -15,21 +15,25 @@ _mdl  = AutoModelForCausalLM.from_pretrained(
             _MODEL_ID,
             device_map="auto",
             torch_dtype="auto")
-_gen  = pipeline(
+_gen = pipeline(
     "text-generation",
     model=_mdl,
     tokenizer=_tok,
     max_new_tokens=1000,
     do_sample=False,
     pad_token_id=_tok.eos_token_id,
-    return_full_text=False
+    return_full_text=False,
 )
 
 # ── 2. load prompt template once ──────────────────────────────────
-_SCORE_TMPL = Path("prompts/coherence_score.prompt").read_text()
+_SCORE_TMPL = Path("prompts/coherence.prompt").read_text()
 
 # Try the RESULT-tags first…
+# Existing:
 _JSON_RE = re.compile(r"<RESULT>\s*(\[[\s\S]*?\])\s*</RESULT>", re.MULTILINE)
+
+# New: match fenced JSON blocks too
+_FENCED_JSON = re.compile(r"```(?:json)?\s*(\[[\s\S]*?\])\s*```", re.MULTILINE)
 
 def batch_df(df: pd.DataFrame, batch_size: int):
     """Yield successive DataFrame chunks of size batch_size."""
@@ -67,6 +71,8 @@ def llm_contextual_rerank(
 
         # 1) Try extracting via <RESULT> tags
         m = _JSON_RE.search(raw)
+        if not m:
+            m = _FENCED_JSON.search(raw)
         if m:
             json_text = m.group(1)
         else:
