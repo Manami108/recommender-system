@@ -14,10 +14,6 @@ from recall import (
 from hop_reasoning import multi_hop_topic_citation_reasoning
 from rerank_llm import llm_contextual_rerank
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Demo script: full pipeline with LLaMA contextual coherence reranking
-# ─────────────────────────────────────────────────────────────────────────────
-
 def main():
     # 1) Example input paragraph
     paragraph = """
