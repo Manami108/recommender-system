@@ -85,15 +85,17 @@ PID: A2
 Title: "Hybrid graph convolutional LSTM model for spatio-temporal air quality transfer learning"
 Abstract: "The short-term air quality forecasting models serve as an early warning system for local agencies, aiding in preparing mitigation strategies against severe pollution episodes. This paper explores the application of Transfer Learning to enhance short-term air quality forecasting model accuracy when labelled data is limited or missing, as often occurs with newly installed monitoring stations or due to sensor malfunctions. These monitoring stations are typically installed in areas of high exposure, like roads or urban/industrial areas, due to recurrent peak episodes or to monitor background pollutant levels generally. Forecasts with greater reliability, even when there is limited historical data available due to the recent installation of the monitoring station for example, are expected to enable the swift implementation of proactive measures to prevent significant pollution episodes from happening. The proposed method leverages knowledge from spatially neighbouring air quality monitoring stations to achieve the multi-modal spatial-temporal transfer learning to the target station, exploring multivariate time series data available from neighbouring monitoring stations. This study employed historical air quality data from spatially adjacent monitoring stations identified in South Wales, UK. The study evaluates the predictive capabilities of four base models and their corresponding transfer learning variants for estimating NO2 and PM10 pollutant levels, which are the most difficult pollutants to meet objectives and limit values in the UK’s air quality strategy. The paper highlights the importance of capturing spatial patterns from different monitoring stations along with temporal trends when it comes to air quality prediction. Our experiments demonstrate that transfer learning models outperform models trained from scratch on air quality multivariate time series prediction problems in a low data environment. The proposed hybrid Graph Convolutional-LSTM model, making use of a novel Granger causality-based adjacency matrix for the new site, has significantly outperformed other baseline models in predicting pollutants, achieving notable improvements in prediction accuracy of approximately 8% for PM10 and 7% for NO2 values, as reflected in the RMSE values. It has also demonstrated the potential for data-efficient approaches in spatial transfer learning by reducing the need for large datasets by incorporating prior causal information."
 
---- chain-of-thought ---
-A1 • local 0.82 (many shared terms: “collaborative filtering”, “cold-start”, “demographic”)
-• cohesion 0.75 (abstract tackles exactly the highlighted pain-points)
-• global 0.78 (extends solution space for sparsity)
-A2 • local 0.05 (domain mismatch)
-• cohesion 0.04
-• global 0.06
---- /chain-of-thought ---
-<RESULT> [ {"pid":"A1","local_score":0.82,"paragraph_score":0.75,"global_score":0.78,"final_score":0.78}, {"pid":"A2","local_score":0.05,"paragraph_score":0.04,"global_score":0.06,"final_score":0.05} ] </RESULT>
+<RESULT> [
+  {
+    "pid": "A1",
+    "rank": 1,
+    "justification": "Ranked 1st. Demonstrates high local and global coherence with the query's focus on deep learning for image representation. It directly discusses CNNs and their application in image classification and hierarchical feature extraction, which directly aligns with the user's intent to use CNNs (specifically AlexNet) for image classification and feature learning via transfer. The comprehensive review of CNNs makes it highly relevant for understanding the core technology."
+  },
+  {
+    "pid": "A2",
+    "rank": 2,
+    "justification": "Ranked 2nd. While it touches on transfer learning and time-series data, its core domain is air quality forecasting using Graph Convolutional-LSTM models, which is outside the user's explicit domain of image representation for classification. However, the discussion of transfer learning in a low-data environment (missing data) provides some global methodological coherence, making it moderately relevant, but less directly aligned than A1."
+  }, ] </RESULT>
 
 ────────────────────────────────────────────────────────
 EXAMPLE 2 (micro, different topic)
@@ -111,11 +113,17 @@ PID: B2
 Title: "Training language models to follow instructions with human feedback"
 Abstract: "Making language models bigger does not inherently make them better at following a user’s intent. For example, large language models can generate outputs that are untruthful, toxic, or simply not helpful to the user. In other words, these models are not aligned with their users. In this paper, we show an avenue for aligning language models with user intent on a wide range of tasks by fine-tuning with human feedback. Starting with a set of labeler-written prompts and prompts submitted through a language model API, we collect a dataset of labeler demonstrations of the desired model behavior, which we use to fine-tune GPT-3 using supervised learning. We then collect a dataset of rankings of model outputs, which we use to further fine-tune this supervised model using reinforcement learning from human feedback. We call the resulting models InstructGPT. In human evaluations on our prompt distribution, outputs from the 1.3B parameter InstructGPT model are preferred to outputs from the 175B GPT-3, despite having 100x fewer parameters. Moreover, InstructGPT models show improvements in truthfulness and reductions in toxic output generation while having minimal performance regressions on public NLP datasets. Even though InstructGPT still makes simple mistakes, our results show that fine-tuning with human feedback is a promising direction for aligning language models with human intent."
 
---- chain-of-thought ---
-B1: strong lexical overlap (“attention”, “relation extraction”), same domain ► high scores
-B2: unrelated ► near-zero scores
---- /chain-of-thought ---
-<RESULT> [ {"pid":"B1","local_score":0.88,"paragraph_score":0.83,"global_score":0.85,"final_score":0.85}, {"pid":"B2","local_score":0.02,"paragraph_score":0.03,"global_score":0.01,"final_score":0.02} ] </RESULT>
+<RESULT> [ 
+  {
+    "pid": "A1",
+    "rank": 1,
+    "justification": "Ranked 1st. Demonstrates high local and global coherence with the query's focus on deep learning for image representation. It directly discusses CNNs and their application in image classification and hierarchical feature extraction, which directly aligns with the user's intent to use CNNs (specifically AlexNet) for image classification and feature learning via transfer. The comprehensive review of CNNs makes it highly relevant for understanding the core technology."
+  },
+  {
+    "pid": "A2",
+    "rank": 2,
+    "justification": "Ranked 2nd. While it touches on transfer learning and time-series data, its core domain is air quality forecasting using Graph Convolutional-LSTM models, which is outside the user's explicit domain of image representation for classification. However, the discussion of transfer learning in a low-data environment (missing data) provides some global methodological coherence, making it moderately relevant, but less directly aligned than A1."
+  }, ] </RESULT>
 
 ────────────────────────────────────────────────────────
 YOUR TURN

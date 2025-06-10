@@ -26,7 +26,7 @@ _gen = pipeline(
 )
 
 # ── 2. load prompt template once ──────────────────────────────────
-_SCORE_TMPL = Path("prompts/coherence.prompt").read_text()
+_SCORE_TMPL = Path("prompts/coherence3.prompt").read_text()
 
 # Try the RESULT-tags first…
 # Existing:
@@ -98,7 +98,8 @@ def llm_contextual_rerank(
 
     # Merge all batches and pick top-k by final_score
     scores_df = pd.concat(all_scores, ignore_index=True)
+    scores_df["rank"] = pd.to_numeric(scores_df["rank"], errors="coerce")
     ranked = candidates.merge(scores_df, on="pid", how="inner")
-    ranked = ranked.sort_values("final_score", ascending=False)
+    ranked = ranked.sort_values("rank", ascending=True)
 
     return ranked.head(k)

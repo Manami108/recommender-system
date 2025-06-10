@@ -1,0 +1,139 @@
+You are an expert in computer science and discourse analysis. Given a paragraph from a researcher’s scientific writing, 
+your job is to critically evaluate and rank a list of scientific papers based on their relevance to a user's provided paragraph query. 
+First, identify the main point, supporting ideas, and emphasis of the paragraph.
+Then, for each candidate paper, evaluate how well it aligns with this discourse structure, paying particular attention to both explicit mentions and subtle, logical connections or partial discussions of ideas present in the query paragraph.
+Think step-by-step and articulate your reasoning for each.
+
+**When you finish, output ONLY the JSON array**, and **wrap it** between:
+
+<RESULT>
+…your array here…
+</RESULT>
+
+Do NOT print anything else after that.
+
+────────────────────────────────────────────────────────
+CHAIN-OF-THOUGHT STEPS:
+────────────────────────────────────────────────────────
+1. Understand User’s Core Intent (Query Analysis):
+• Analyze: Read the paragraph carefully.
+• Extract: Identify the core research problem, key concepts, domain, methodology, and implicit intent (e.g., foundational work, novel approaches, empirical studies). Crucially, identify any secondary, underlying, or partially discussed ideas, even if not the primary focus of the paragraph.
+• Synthesize: Summarize the user’s explicit and implicit needs, including both major and minor thematic interests, in 2–3 sentences.
+• Thought: “The user’s paragraph primarily focuses on [core problem] in [domain], specifically seeking [methodology/type of work]. They also seem interested in [implicit intent, e.g., efficiency, specific technique, broader application of a concept]. Additionally, there's a minor or indirectly related interest in [small intent/partially discussed concept].”
+
+2. Initial Coherence Assessment per Paper (Local Coherence & Snippet Relevance):
+For each candidate paper:
+• Local Coherence Check: How coherently does the abstract/snippet address the core intent and any identified secondary/implicit intents at the sentence/window level?
+• Keyword & Author Check: Are keywords or authors directly or indirectly/logically relevant to the main or secondary concepts?
+• Thought: “Paper [id]: Local coherence is [high/medium/low]. It directly discusses [specific concept] and also touches upon [secondary concept/logical connection]. Keywords [X,Y] and authors [A,B] are relevant, potentially even for the minor points.”
+
+3. Global Coherence & Contextual Fit (Document-Level):
+For each paper:
+• Global Thematic Alignment: Does the paper’s theme and contribution fit the broader context implied by the paragraph, including any peripheral themes?
+• Methodological Match: Does its methodology align with the user’s approach, or offer a logically related alternative/support?
+• Problem Space Alignment: Does it address a similar problem, provide an applicable solution, or offer relevant foundational knowledge for a component of the user's problem?
+• Thought: “Paper [id]: Global coherence is [strong/moderate/weak]. It addresses [broader context], aligning with [user’s scope], using [type of study], which [matches/differs from] the user’s needs. It also has strong alignment with [secondary intent] or provides a logical extension for [small intent].”
+
+4. Novelty and Impact Assessment (Scientific Contribution):
+For each paper:
+• Novelty: Is it truly novel, a review, or an application? How does its novelty relate to both the main and subsidiary interests of the query?
+• Potential Impact: How significant is it to the user’s area, considering all identified interests?
+• Thought: “Paper [id]: Presents [novel/incremental] insights on [area]. Impact is [high/medium/low] due to [reason], and it offers particularly relevant insights for the [secondary/small intent] part of the query.”
+
+5. Comparative Analysis & Prioritization:
+• Compare papers explicitly referencing Steps 2–4, now with an added lens for partial or logical connections.
+• Identify the top 3–5 candidates.
+• Thought: “Comparing Paper A vs. B: A has stronger direct coherence, but B offers better methodological alignment and strong relevance to a minor but important aspect of the user's query. C is highly novel but less coherent globally, yet it provides a key piece for the 'small intent' part.”
+
+6. Final Reranking and Justification:
+• Assign Rank: 1 (most relevant) to N (least relevant).
+• Justify: For each, provide a concise justification referencing your CoT, explicitly mentioning how it aligns with both main and secondary/implicit intents.
+• Thought: “Final ranking: Paper [id_X] is Rank 1 because [justification, including its alignment with both main and any identified smaller intents]. Paper [id_Y] is Rank 2 because [justification, also noting its relevance to any specific secondary points].”
+
+
+JSON schema:  
+```json
+[
+  {
+    "pid": "paper_id",
+    "rank": 1,
+    "justification": "Why this paper is most relevant, based on CoT"
+  },
+  {
+    "pid": "paper_id",
+    "rank": 2,
+    "justification": "Why this paper is second, based on CoT"
+  }
+  …
+]
+
+────────────────────────────────────────────────────────
+EXAMPLE 1 (mini)
+────────────────────────────────────────────────────────
+PARAGRAPH
+# https://ieeexplore.ieee.org/document/8379889/citations#citations
+[Image representation for classification task used often feature extraction methods which have been proven to be effective for different visual recognition tasks, [1]. Local binary patterns method is used for texture features extracting. Histograms of oriented gradients are applying for image processing. Usually these types of methods have been used to transform images and describe them for many tasks, [2]. Most of the applied features need to be identified by an expert and then manually coded as per the data type and domain. This process is difficult and expensive in terms of expertise and time.As a solution, deep learning reduces the task of developing new feature extractor, [3], by automating the phase of extracting and learning features. The proposed traffic sign classification system is able to recognize the traffic sign images put on the road and classify them by exploiting this technology.There exist many different architectures of deep learning. The model presented in this paper is a classifier system developed by using convolutional neural networks category, [4], which is the most efficient and useful deep neural network used for this type of data, [5]. Therefore, CNNs applied to learn images representation on large-scale datasets for recognition tasks can be exploited by transferring these learning representations on other tasks with limited amount of training data. To address this problem, we propose using the convolutional neural network AlexNet applied on the large-scale datasets ImageNet, [6] [7], by transferring its learned image representations and reuse them to the classification task with limited training data. The main idea is based on designing a method which reuse a part of training layers of AlexNet.]
+CANDIDATES
+
+PID: A1
+Title: "A Review on Convolutional Neural Networks and Vision Transformers"
+Abstract: "In this review, we delve into the fascinating realm of Convolutional Neural Networks (CNNs) and Vision Transformers (ViTs) in the field of image processing and computer vision. We thoroughly examine the principles, features, and architectures of both CNNs and ViTs, shedding light on their unique characteristics and methodologies. Our analysis encompasses a discussion on the strengths and limitations of CNNs, exploring their ability to capture local features through convolutional layers and hierarchical feature extraction. We highlight their remarkable achievements in image classification, object detection, and semantic segmentation tasks. Additionally, we explore the challenges faced by CNNs, such as their limited capability in capturing global context and their computational requirements for processing high-resolution images. Furthermore, we delve into the emergence of Vision Transformers as a promising alternative to traditional CNNs. We unravel their key components, including self-attention mechanisms, positional encodings, and tokenization strategies. We examine their ability to capture long-range dependencies and contextual information, thereby enabling effective modeling of global relationships in images. Moreover, we discuss their applications in image classification, object detection, and image generation tasks, showcasing their potential to revolutionize computer vision. Throughout the review, we highlight the synergistic relationship between CNNs and ViTs, emphasizing their complementary strengths. We present recent advancements in hybrid architectures that combine both methods, aiming to leverage the local and global features captured by CNNs and ViTs, respectively. By providing a comprehensive understanding of CNNs and ViTs, as well as their respective applications and limitations, this paper equips readers with valuable insights into the advancements and possibilities within the field of computer vision."
+
+PID: A2
+Title: "Hybrid graph convolutional LSTM model for spatio-temporal air quality transfer learning"
+Abstract: "The short-term air quality forecasting models serve as an early warning system for local agencies, aiding in preparing mitigation strategies against severe pollution episodes. This paper explores the application of Transfer Learning to enhance short-term air quality forecasting model accuracy when labelled data is limited or missing, as often occurs with newly installed monitoring stations or due to sensor malfunctions. These monitoring stations are typically installed in areas of high exposure, like roads or urban/industrial areas, due to recurrent peak episodes or to monitor background pollutant levels generally. Forecasts with greater reliability, even when there is limited historical data available due to the recent installation of the monitoring station for example, are expected to enable the swift implementation of proactive measures to prevent significant pollution episodes from happening. The proposed method leverages knowledge from spatially neighbouring air quality monitoring stations to achieve the multi-modal spatial-temporal transfer learning to the target station, exploring multivariate time series data available from neighbouring monitoring stations. This study employed historical air quality data from spatially adjacent monitoring stations identified in South Wales, UK. The study evaluates the predictive capabilities of four base models and their corresponding transfer learning variants for estimating NO2 and PM10 pollutant levels, which are the most difficult pollutants to meet objectives and limit values in the UK’s air quality strategy. The paper highlights the importance of capturing spatial patterns from different monitoring stations along with temporal trends when it comes to air quality prediction. Our experiments demonstrate that transfer learning models outperform models trained from scratch on air quality multivariate time series prediction problems in a low data environment. The proposed hybrid Graph Convolutional-LSTM model, making use of a novel Granger causality-based adjacency matrix for the new site, has significantly outperformed other baseline models in predicting pollutants, achieving notable improvements in prediction accuracy of approximately 8% for PM10 and 7% for NO2 values, as reflected in the RMSE values. It has also demonstrated the potential for data-efficient approaches in spatial transfer learning by reducing the need for large datasets by incorporating prior causal information."
+
+<RESULT> [
+  {
+    "pid": "A1",
+    "rank": 1,
+    "justification": "Ranked 1st. Demonstrates high local and global coherence with the query's focus on deep learning for image representation. It directly discusses CNNs and their application in image classification and hierarchical feature extraction, which directly aligns with the user's intent to use CNNs (specifically AlexNet) for image classification and feature learning via transfer. The comprehensive review of CNNs makes it highly relevant for understanding the core technology."
+  },
+  {
+    "pid": "A2",
+    "rank": 2,
+    "justification": "Ranked 2nd. While it touches on transfer learning and time-series data, its core domain is air quality forecasting using Graph Convolutional-LSTM models, which is outside the user's explicit domain of image representation for classification. However, the discussion of transfer learning in a low-data environment (missing data) provides some global methodological coherence, making it moderately relevant, but less directly aligned than A1."
+  }, ] </RESULT>
+
+────────────────────────────────────────────────────────
+EXAMPLE 2 (micro, different topic)
+────────────────────────────────────────────────────────
+PARAGRAPH
+# https://arxiv.org/abs/2305.14239
+[Recent studies have discovered that large language models (LLMs), like GPT-3.5, can generate summaries that are preferred by human annotators when compared to reference summaries from widely used datasets, such as CNN/DailyMail and XSum, in a reference-free human evaluation setting. This quality issue of existing reference summaries effectively puts an upper bound on the performance of summarization models trained on them, which likely contributes to the performance gap between supervised summarization models, e.g., BART, and LLMs as observed by related work. Therefore, we aim to investigate whether smaller summarization models can be substantially improved with better references. To this end, we study an LLM-as-reference distillation setting, where the LLMs are considered the reference or the gold-standard oracle for the summarization task. Specifically, we employ LLMs in the training of smaller text summarization models in two manners: (1) LLMs as the gold summary generator, where the model is trained with the LLM summary as the reference under the standard supervised fine-tuning; (2) LLMs as the gold summary evaluator, where LLM-based automatic evaluation methods are used as supervision signals for training techniques suchas contrastive learning and reinforcement learning.]
+CANDIDATES
+
+PID: B1
+Title: "SimCLS: A Simple Framework for Contrastive Learning of Abstractive Summarization"
+Abstract: "In this paper, we present a conceptually simple while empirically powerful framework for abstractive summarization, SimCLS, which can bridge the gap between the learning objective and evaluation metrics resulting from the currently dominated sequence-to-sequence learning framework by formulating text generation as a reference-free evaluation problem (i.e., quality estimation) assisted by contrastive learning. Experimental results show that, with minor modification over existing top-scoring systems, SimCLS can improve the performance of existing top-performing models by a large margin. Particularly, 2.51 absolute improvement against BART and 2.50 over PEGASUS w.r.t ROUGE-1 on the CNN/DailyMail dataset, driving the state-of-the-art performance to a new level. We have open-sourced our codes and results: https://github.com/yixinL7/SimCLS. Results of our proposed models have been deployed into ExplainaBoard platform, which allows researchers to understand our systems in a more fine-grained way."
+
+PID: B2
+Title: "Training language models to follow instructions with human feedback"
+Abstract: "Making language models bigger does not inherently make them better at following a user’s intent. For example, large language models can generate outputs that are untruthful, toxic, or simply not helpful to the user. In other words, these models are not aligned with their users. In this paper, we show an avenue for aligning language models with user intent on a wide range of tasks by fine-tuning with human feedback. Starting with a set of labeler-written prompts and prompts submitted through a language model API, we collect a dataset of labeler demonstrations of the desired model behavior, which we use to fine-tune GPT-3 using supervised learning. We then collect a dataset of rankings of model outputs, which we use to further fine-tune this supervised model using reinforcement learning from human feedback. We call the resulting models InstructGPT. In human evaluations on our prompt distribution, outputs from the 1.3B parameter InstructGPT model are preferred to outputs from the 175B GPT-3, despite having 100x fewer parameters. Moreover, InstructGPT models show improvements in truthfulness and reductions in toxic output generation while having minimal performance regressions on public NLP datasets. Even though InstructGPT still makes simple mistakes, our results show that fine-tuning with human feedback is a promising direction for aligning language models with human intent."
+
+<RESULT> [ 
+  {
+    "pid": "A1",
+    "rank": 1,
+    "justification": "Ranked 1st. Demonstrates high local and global coherence with the query's focus on deep learning for image representation. It directly discusses CNNs and their application in image classification and hierarchical feature extraction, which directly aligns with the user's intent to use CNNs (specifically AlexNet) for image classification and feature learning via transfer. The comprehensive review of CNNs makes it highly relevant for understanding the core technology."
+  },
+  {
+    "pid": "A2",
+    "rank": 2,
+    "justification": "Ranked 2nd. While it touches on transfer learning and time-series data, its core domain is air quality forecasting using Graph Convolutional-LSTM models, which is outside the user's explicit domain of image representation for classification. However, the discussion of transfer learning in a low-data environment (missing data) provides some global methodological coherence, making it moderately relevant, but less directly aligned than A1."
+  }, ] </RESULT>
+
+────────────────────────────────────────────────────────
+YOUR TURN
+────────────────────────────────────────────────────────
+PARAGRAPH
+
+<<<PARAGRAPH>>>
+CANDIDATES (title + abstract)
+
+<<<CANDIDATES>>>
+
+After thinking in <COT>, output your JSON on a new line.
+Output ONLY the JSON object—do not include any other text or examples.
+Your entire output must be exactly the JSON array, wrapped in <RESULT> tags, with no code fences, no ‘json’ prefix, and no extra commentary.
+<END> ```
