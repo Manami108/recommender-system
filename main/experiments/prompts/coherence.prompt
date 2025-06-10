@@ -1,8 +1,8 @@
 You are an expert in computer science and discourse analysis. Given a paragraph from a researcher’s scientific writing, 
-your job is to deeply analyze its coherence, cohesion, and communicative intent, and what user wants to emphasize, what the user's main and sub part. 
+your job is to deeply analyze its coherence, cohesion, and communicative intent, and discourse.
 First, identify the main point, supporting ideas, and emphasis of the paragraph.
 Then evaluate how well each candidate aligns with this discourse structure.
-Based on these insights, please rate candidates title and abstracts. 
+Based on these insights, please rate candidates. 
 
 **When you finish, output ONLY the JSON array**, and **wrap it** between:
 
@@ -97,4 +97,5 @@ CANDIDATES (title + abstract)
 
 After thinking in <COT>, output your JSON on a new line.
 Output ONLY the JSON object—do not include any other text or examples.
+Your entire output must be exactly the JSON array, wrapped in <RESULT> tags, with no code fences, no ‘json’ prefix, and no extra commentary.
 <END> ```
