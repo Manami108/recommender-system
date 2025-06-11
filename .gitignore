@@ -1,6 +1,5 @@
 # Local project ignores
 node_modules
-datasets
 fais_env
 package-lock.json
 package.json
