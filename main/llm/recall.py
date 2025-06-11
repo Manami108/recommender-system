@@ -1,4 +1,5 @@
 import os
+import re
 import numpy as np
 import pandas as pd
 from neo4j import GraphDatabase # Neo4j
@@ -21,6 +22,16 @@ _sci.eval()
 VECTOR_INDEX   = "paper_vec"
 FULLTEXT_INDEX = "paper_fulltext"
 
+# regex for escaping Lucene special characters
+import re
+
+_LUCENE_SPECIAL = re.compile(r'([+\-!(){}\[\]^"~*?:\\/])')
+
+def escape_lucene(text: str, max_len: int = 500) -> str:
+    snippet = text[:max_len]
+    return _LUCENE_SPECIAL.sub(r'\\\1', snippet)
+
+
 # compute user query embedding, and normalizing is true for cosign similarity computation efficiency. 
 def embed(text: str) -> np.ndarray:
     return _sci.encode(text, convert_to_numpy=True, normalize_embeddings=True)
@@ -29,24 +40,29 @@ def embed(text: str) -> np.ndarray:
 # I think 25 is not a good idea because its in the way limit reranking candidates later on. 
 # I wrote 0 as hop because it is gonna be exact matching and i will do hop traversal later on. 
 def recall_fulltext(query: str, k: int = 25) -> pd.DataFrame:
-    rows = []
+    safe_q = escape_lucene(query)
     with driver.session() as session:
         results = session.run(
             """
             CALL db.index.fulltext.queryNodes($idx, $q, {limit:$k})
             YIELD node, score
-            RETURN node.id AS pid, node.title AS title,
-                   node.year AS year, 0 AS hop, score AS sim
+            RETURN node.id AS pid,
+                   node.title AS title,
+                   node.year AS year,
+                   0 AS hop,
+                   score AS sim
             """,
-            idx=FULLTEXT_INDEX, q=query, k=k
+            idx=FULLTEXT_INDEX,
+            q=safe_q,
+            k=k
         ).data()
     return pd.DataFrame(results)
+
 
 # This is embedding search 
 # Cosign similarity is computed by (1.0 - score)
 # i dont know how much i should set for similarity threshold. 
 def recall_vector(vec: np.ndarray, k: int = 25, sim_threshold: float = 0.0) -> pd.DataFrame:
-    rows = []
     with driver.session() as session:
         results = session.run(
             """
@@ -54,21 +70,32 @@ def recall_vector(vec: np.ndarray, k: int = 25, sim_threshold: float = 0.0) -> p
             YIELD node, score
             WITH node, (1.0 - score) AS sim
             WHERE sim >= $th
-            RETURN node.id AS pid, node.title AS title,
-                   node.year AS year, 0 AS hop, sim
+            RETURN node.id AS pid,
+                   node.title AS title,
+                   node.year AS year,
+                   0 AS hop,
+                   sim
             """,
-            idx=VECTOR_INDEX, k=k, vec=vec.tolist(), th=sim_threshold
+            idx=VECTOR_INDEX,
+            k=k,
+            vec=vec.tolist(),
+            th=sim_threshold
         ).data()
     return pd.DataFrame(results)
 
+
 # For each chunk, BM25 and embedding are done. 
 # i search candidates based on chunking and full exact matching too.
-def recall_by_chunks(chunks: list[str], k_vec: int=40, k_bm25: int=40, sim_th: float=0.3) -> pd.DataFrame:
+def recall_by_chunks(chunks: list[str], k_vec: int = 40, k_bm25: int = 40, sim_th: float = 0.3) -> pd.DataFrame:
     rows = []
     for ch in chunks:
-        rows += recall_fulltext(ch, k=k_bm25).assign(src='bm25').to_dict('records')
+        # BM25 on chunk
+        bm25_hits = recall_fulltext(ch, k=k_bm25)
+        rows += bm25_hits.assign(source='bm25').to_dict('records')
+        # Embedding on chunk
         vec = embed(ch)
-        rows += recall_vector(vec, k=k_vec, sim_threshold=sim_th).assign(src='embed').to_dict('records')
+        embed_hits = recall_vector(vec, k=k_vec, sim_threshold=sim_th)
+        rows += embed_hits.assign(source='embed').to_dict('records')
 
     df = pd.DataFrame(rows)
     if df.empty:
@@ -76,8 +103,8 @@ def recall_by_chunks(chunks: list[str], k_vec: int=40, k_bm25: int=40, sim_th: f
 
     # keep best sim per pid and src
     df = (
-        df.sort_values(['src','sim'], ascending=[True, False])
-          .drop_duplicates(['pid','src'])
+        df.sort_values(['source','sim'], ascending=[True, False])
+          .drop_duplicates(['pid','source'])
           .reset_index(drop=True)
     )
     return df
