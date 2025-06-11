@@ -41,9 +41,10 @@ For each paper:
 • Thought: “Paper [id]: Presents [novel/incremental] insights on [area]. Impact is [high/medium/low] due to [reason], and it offers particularly relevant insights for the [secondary/small intent] part of the query.”
 
 5. Comparative Analysis & Prioritization:
-• Compare papers explicitly referencing Steps 2–4, now with an added lens for partial or logical connections.
-• Identify the top 3–5 candidates.
-• Thought: “Comparing Paper A vs. B: A has stronger direct coherence, but B offers better methodological alignment and strong relevance to a minor but important aspect of the user's query. C is highly novel but less coherent globally, yet it provides a key piece for the 'small intent' part.”
+• Compare all candidate papers explicitly, referencing the assessments from Steps 2–4.
+• Identify the single most relevant paper first (Rank 1).
+• Then, sequentially identify the next most relevant, and so on, ensuring each rank is unique and ordered.
+• Thought: “Comparing Paper A vs. B vs. C: Paper B is the strongest overall due to [reason], making it Rank 1. Paper A is next because [reason], Rank 2. Paper C, while relevant, is less so than A and B because [reason], making it Rank 3.”
 
 6. Final Reranking and Justification:
 • Assign Rank: 1 (most relevant) to N (least relevant).
