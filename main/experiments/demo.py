@@ -14,10 +14,6 @@ from recall import (
 from hop_reasoning import multi_hop_topic_citation_reasoning
 from rerank_llm import llm_contextual_rerank
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Demo script: full pipeline with LLaMA contextual coherence reranking
-# ─────────────────────────────────────────────────────────────────────────────
-
 def main():
     # 1) Example input paragraph
     paragraph = """
@@ -93,7 +89,7 @@ def main():
     reranked = llm_contextual_rerank(paragraph, df[['pid','title','abstract']])
     topk     = reranked.head(10)
     print("5) Top 10 recommendations after contextual coherence rerank:")
-    print(topk[['pid','title','final_score']].to_string(index=False))
+    print(topk[['pid', 'title', 'rank', 'justification']].to_string(index=False))
 
     # 8) Save final results
     out_csv = os.getenv('OUTPUT_CSV', 'final_recommendations.csv')
