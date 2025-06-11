@@ -1,123 +1,187 @@
+# recall.py
+# ---------------------------------------------------------------------------
+# Retrieval utilities for the context-aware scientific-paper recommender
+# ---------------------------------------------------------------------------
+
+from __future__ import annotations
+
 import os
 import re
+from functools import lru_cache
+from typing import Any, Iterable
+
 import numpy as np
 import pandas as pd
-from neo4j import GraphDatabase # Neo4j
-from sentence_transformers import SentenceTransformer # SciBERT
-from hop_reasoning import multi_hop_topic_citation_reasoning
+from neo4j import GraphDatabase, READ_ACCESS
+from sentence_transformers import SentenceTransformer
 
+# ────────────────────────────── CONFIGURATION ────────────────────────────── #
 
-# call neo4j driver 
-# Need to modify when i want to switch to API
-driver = GraphDatabase.driver(
-    os.getenv("NEO4J_URI", "bolt://localhost:7687"),
-    auth=(os.getenv("NEO4J_USER", "neo4j"), os.getenv("NEO4J_PASS", "Manami1008"))
-)
+# Neo4j
+_NEO4J_URI  = os.getenv("NEO4J_URI",  "bolt://localhost:7687")
+_NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
+_NEO4J_PASS = os.getenv("NEO4J_PASS", "Manami1008")
 
-# call sciBERT
-_sci = SentenceTransformer("allenai/scibert_scivocab_uncased")
-_sci.eval()
-
-# paper vec: vector index stored in neo4j, paper fulltext: full text (BM25) index
+# Vector & BM25 indexes (names must match those created in Neo4j)
 VECTOR_INDEX   = "paper_vec"
 FULLTEXT_INDEX = "paper_fulltext"
 
-# regex for escaping Lucene special characters
-import re
+# Search hyper-parameters (override per-call if needed)
+DEFAULT_K_BM25   = 40
+DEFAULT_K_VEC    = 40
+DEFAULT_SIM_TH   = 0.30         # cosine similarity threshold (1–distance)
+EMBED_DIM        = 768          # SciBERT size; used for zero-vec fallback
+
+# ─────────────────────────────── CONNECTIONS ─────────────────────────────── #
+
+# A single global driver is fine for most scripts.  Neo4j handles pooling.
+_driver = GraphDatabase.driver(
+    _NEO4J_URI,
+    auth=(_NEO4J_USER, _NEO4J_PASS),
+)
+
+# ──────────────────────────── EMBEDDING / ENCODING ───────────────────────── #
+
+@lru_cache(maxsize=1)
+def _sci_model() -> SentenceTransformer:
+    """Singleton-style loader so the SciBERT weights load only once."""
+    model = SentenceTransformer("allenai/scibert_scivocab_uncased")
+    model.eval()
+    return model
+
+def embed(text: str) -> np.ndarray:
+    """Return a *normalized* 768-d SciBERT embedding (L2 = 1)."""
+    return _sci_model().encode(text, convert_to_numpy=True, normalize_embeddings=True)
+
+# ────────────────────────────── LUCENE ESCAPING ──────────────────────────── #
 
 _LUCENE_SPECIAL = re.compile(r'([+\-!(){}\[\]^"~*?:\\/])')
 
-def escape_lucene(text: str, max_len: int = 500) -> str:
-    snippet = text[:max_len]
-    return _LUCENE_SPECIAL.sub(r'\\\1', snippet)
+def escape_lucene(text: str, *, max_len: int = 500) -> str:
+    """Escape Lucene special chars and truncate to ‹max_len› (index limit)."""
+    return _LUCENE_SPECIAL.sub(r"\\\1", text[:max_len])
+
+# ────────────────────────────── CORE RETRIEVAL ───────────────────────────── #
+
+def recall_fulltext(
+    query: str,
+    *,
+    k: int = DEFAULT_K_BM25,
+) -> pd.DataFrame:
+    """BM25 lookup over title+abstract FULLTEXT index."""
+    lucene_q = escape_lucene(query)
+    cypher = """
+        CALL db.index.fulltext.queryNodes($idx, $q, {limit:$k})
+        YIELD node, score
+        RETURN node.id AS pid,
+               node.title AS title,
+               node.year  AS year,
+               0          AS hop,
+               score      AS sim
+    """
+    with _driver.session(default_access_mode=READ_ACCESS) as sess:
+        rows = sess.run(cypher, idx=FULLTEXT_INDEX, q=lucene_q, k=k).data()
+    return pd.DataFrame(rows, columns=["pid", "title", "year", "hop", "sim"])
 
 
-# compute user query embedding, and normalizing is true for cosign similarity computation efficiency. 
-def embed(text: str) -> np.ndarray:
-    return _sci.encode(text, convert_to_numpy=True, normalize_embeddings=True)
-
-# It retrieves top-k papers which title and abstract matches user query (BM25 so keywords matching based using TFiDF concepts)
-# I think 25 is not a good idea because its in the way limit reranking candidates later on. 
-# I wrote 0 as hop because it is gonna be exact matching and i will do hop traversal later on. 
-def recall_fulltext(query: str, k: int = 25) -> pd.DataFrame:
-    safe_q = escape_lucene(query)
-    with driver.session() as session:
-        results = session.run(
-            """
-            CALL db.index.fulltext.queryNodes($idx, $q, {limit:$k})
-            YIELD node, score
-            RETURN node.id AS pid,
-                   node.title AS title,
-                   node.year AS year,
-                   0 AS hop,
-                   score AS sim
-            """,
-            idx=FULLTEXT_INDEX,
-            q=safe_q,
-            k=k
-        ).data()
-    return pd.DataFrame(results)
-
-
-# This is embedding search 
-# Cosign similarity is computed by (1.0 - score)
-# i dont know how much i should set for similarity threshold. 
-def recall_vector(vec: np.ndarray, k: int = 25, sim_threshold: float = 0.0) -> pd.DataFrame:
-    with driver.session() as session:
-        results = session.run(
-            """
-            CALL db.index.vector.queryNodes($idx, $k, $vec)
-            YIELD node, score
-            WITH node, (1.0 - score) AS sim
-            WHERE sim >= $th
-            RETURN node.id AS pid,
-                   node.title AS title,
-                   node.year AS year,
-                   0 AS hop,
-                   sim
-            """,
+def recall_vector(
+    vec: np.ndarray,
+    *,
+    k: int = DEFAULT_K_VEC,
+    sim_threshold: float = DEFAULT_SIM_TH,
+) -> pd.DataFrame:
+    """Approximate nearest-neighbour search on the `paper_vec` index."""
+    cypher = """
+        CALL db.index.vector.queryNodes($idx, $k, $vec)
+        YIELD node, score
+        WITH node, (1.0 - score) AS sim
+        WHERE sim >= $th
+        RETURN node.id    AS pid,
+               node.title AS title,
+               node.year  AS year,
+               0          AS hop,
+               sim
+    """
+    with _driver.session(default_access_mode=READ_ACCESS) as sess:
+        rows = sess.run(
+            cypher,
             idx=VECTOR_INDEX,
             k=k,
-            vec=vec.tolist(),
-            th=sim_threshold
+            vec=vec.astype(np.float32).tolist(),
+            th=float(sim_threshold),
         ).data()
-    return pd.DataFrame(results)
+    return pd.DataFrame(rows, columns=["pid", "title", "year", "hop", "sim"])
 
 
-# For each chunk, BM25 and embedding are done. 
-# i search candidates based on chunking and full exact matching too.
-def recall_by_chunks(chunks: list[str], k_vec: int = 40, k_bm25: int = 40, sim_th: float = 0.3) -> pd.DataFrame:
-    rows = []
+def recall_by_chunks(
+    chunks: Iterable[str],
+    *,
+    k_bm25: int = DEFAULT_K_BM25,
+    k_vec: int  = DEFAULT_K_VEC,
+    sim_th: float = DEFAULT_SIM_TH,
+) -> pd.DataFrame:
+    """
+    For every *chunk* of the query paragraph, run both BM25 and vector recall.
+    Returns one row per (pid, source) with the best similarity score.
+    """
+    rows: list[dict[str, Any]] = []
+
     for ch in chunks:
-        # BM25 on chunk
-        bm25_hits = recall_fulltext(ch, k=k_bm25)
-        rows += bm25_hits.assign(source='bm25').to_dict('records')
-        # Embedding on chunk
-        vec = embed(ch)
-        embed_hits = recall_vector(vec, k=k_vec, sim_threshold=sim_th)
-        rows += embed_hits.assign(source='embed').to_dict('records')
+        rows += recall_fulltext(ch, k=k_bm25)           .assign(source="bm25").to_dict("records")
+        rows += recall_vector(embed(ch), k=k_vec,
+                              sim_threshold=sim_th)      .assign(source="embed").to_dict("records")
 
-    df = pd.DataFrame(rows)
-    if df.empty:
-        return df
+    if not rows:
+        return pd.DataFrame(columns=["pid", "title", "year", "hop", "sim", "source"])
 
-    # keep best sim per pid and src
     df = (
-        df.sort_values(['source','sim'], ascending=[True, False])
-          .drop_duplicates(['pid','source'])
+        pd.DataFrame(rows)
+          .sort_values(["source", "sim"], ascending=[True, False])
+          .drop_duplicates(["pid", "source"], keep="first")   # keep best hit per source
           .reset_index(drop=True)
     )
     return df
 
-# This is for fetching metadata after all retrieval
+# ────────────────────────────── METADATA LOOKUP ───────────────────────────── #
+
 def fetch_metadata(pids: list[str]) -> pd.DataFrame:
+    """
+    Return ‹pid, title, abstract, authors, year› for each paper id in ‹pids›.
+    Always yields the same columns (possibly empty) to avoid KeyErrors
+    downstream.
+    """
     if not pids:
-        return pd.DataFrame(columns=['pid','title','abstract','authors','year'])
-    query = (
-        "MATCH (p:Paper) WHERE p.id IN $ids "
-        "RETURN p.id AS pid, p.title AS title, p.abstract AS abstract,"
-        " p.authors AS authors, p.year AS year"
-    )
-    with driver.session() as session:
-        rows = session.run(query, ids=pids).data()
-    return pd.DataFrame(rows)
+        return pd.DataFrame(columns=["pid", "title", "abstract", "authors", "year"])
+
+    cypher = """
+        MATCH (p:Paper)
+        WHERE p.id IN $ids
+        RETURN p.id       AS pid,
+               p.title    AS title,
+               COALESCE(p.abstract, '') AS abstract,
+               COALESCE(p.authors,  '') AS authors,
+               p.year     AS year
+    """
+    with _driver.session(default_access_mode=READ_ACCESS) as sess:
+        rows = sess.run(cypher, ids=pids).data()
+
+    # Ensure DataFrame has all expected columns even if Neo4j returns 0 rows
+    return pd.DataFrame(rows, columns=["pid", "title", "abstract",
+                                       "authors", "year"])
+
+# ──────────────────────────── COSINE SIM UTILITY ─────────────────────────── #
+
+def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
+    """Assumes vectors are already L2-normalized → dot-product = cosine."""
+    return float(np.dot(a, b))
+
+# ───────────────────────────── PUBLIC RE-EXPORTS ─────────────────────────── #
+
+__all__ = [
+    # embedding & utils
+    "embed", "cosine_similarity",
+    # recall
+    "recall_fulltext", "recall_vector", "recall_by_chunks",
+    # metadata
+    "fetch_metadata",
+]

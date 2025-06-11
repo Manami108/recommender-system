@@ -13,150 +13,116 @@ from recall import (
 from rerank_llm import llm_contextual_rerank
 from neo4j import GraphDatabase
 
-# ─── Metric utilities ──────────────────────────────────────────────────────────
+# ─── CONFIG ───────────────────────────────────────────────────────────────────
+NEO4J_URI     = os.getenv('NEO4J_URI', 'bolt://localhost:7687')
+NEO4J_USER    = os.getenv('NEO4J_USER', 'neo4j')
+NEO4J_PASS    = os.getenv('NEO4J_PASS', 'Manami1008')
+SIM_THRESHOLD = 0.75  # embedding similarity cutoff for correctness
+TOPK_LIST     = (5, 10, 20)
+TOKENIZER     = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3-8B-Instruct")
 
-def precision_at_k(predicted_pids, true_pids, k):
-    topk = predicted_pids[:k]
-    return len(set(topk) & set(true_pids)) / k
-
-
-def hit_rate_at_k(predicted_pids, true_pids, k):
-    return float(any(pid in true_pids for pid in predicted_pids[:k]))
-
-
-def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
-    return float(np.dot(a, b))  # assumes embeddings are normalized
-
-# ─── Neo4j Driver setup ─────────────────────────────────────────────────────────
-
-driver = GraphDatabase.driver(
-    os.getenv("NEO4J_URI", "bolt://localhost:7687"),
-    auth=(os.getenv("NEO4J_USER", "neo4j"), os.getenv("NEO4J_PASS", "Manami1008"))
-)
-
+# ─── NEO4J DRIVER ──────────────────────────────────────────────────────────────
+driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASS))
 
 def fetch_year_by_doi(doi: str) -> int | None:
-    q = "MATCH (p:Paper {doi: $doi}) RETURN p.year AS year"
+    q = "MATCH (p:Paper {doi:$doi}) RETURN p.year AS year"
     with driver.session() as sess:
         rec = sess.run(q, doi=doi).single()
-    return rec["year"] if rec else None
+    return rec['year'] if rec and rec['year'] is not None else None
 
-# ─── Tokenizer & config ─────────────────────────────────────────────────────────
+# ─── METRIC UTILITIES ─────────────────────────────────────────────────────────
+def precision_by_sim(pred: list[str], sim_map: dict[str,bool], k: int) -> float:
+    flags = [sim_map.get(pid, False) for pid in pred[:k]]
+    return sum(flags) / k if k else 0.0
 
-TOKENIZER = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3-8B-Instruct")
-SIM_THRESHOLD = 0.75  # similarity threshold for reference matching
+def hit_rate_by_sim(pred: list[str], sim_map: dict[str,bool], k: int) -> float:
+    return float(any(sim_map.get(pid, False) for pid in pred[:k]))
 
-# ─── Single-case evaluation ────────────────────────────────────────────────────
+def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
+    return float(np.dot(a, b))  # assume normalized embeddings
 
-def evaluate_case(paragraph, true_pids, target_year=None, topk_list=(5,10,20)):
+# ─── EVALUATION ────────────────────────────────────────────────────────────────
+def evaluate_case(paragraph: str, true_pids: list[str], target_year: int | None = None) -> dict:
     # 1) Preprocess & chunk
     cleaned = clean_text(paragraph)
-    chunks = chunk_tokens(cleaned, TOKENIZER, win=128, stride=64)
+    chunks  = chunk_tokens(cleaned, TOKENIZER, win=128, stride=64)
 
-    # 2a) Global/full-text recall
-    full_bm25 = recall_fulltext(cleaned, k=40).assign(source='bm25_full')
-    full_vec  = recall_vector(embed(cleaned), k=40, sim_threshold=0.30).assign(source='embed_full')
-    # 2b) Chunk-based recall
-    chunk_df  = recall_by_chunks(chunks, k_bm25=40, k_vec=40, sim_th=0.30).assign(source='chunked')
+    # 2) Recall candidates
+    bm25_full = recall_fulltext(cleaned, k=40).assign(source='bm25_full')
+    vec_full  = recall_vector(embed(cleaned), k=40, sim_threshold=0.30).assign(source='embed_full')
+    chunked   = recall_by_chunks(chunks, k_bm25=40, k_vec=40, sim_th=0.30).assign(source='chunked')
+    candidates = pd.concat([bm25_full, vec_full, chunked], ignore_index=True)
+    candidates = candidates.sort_values(['source','sim'], ascending=[True, False])
+    candidates = candidates.drop_duplicates('pid', keep='first').reset_index(drop=True)
 
-    # 2c) Combine & dedupe
-    rec_df = pd.concat([full_bm25, full_vec, chunk_df], ignore_index=True)
-    rec_df = (
-        rec_df
-        .sort_values(['source','sim'], ascending=[True, False])
-        .drop_duplicates('pid', keep='first')
-        .reset_index(drop=True)
-    )
+    # 3) Fetch metadata (title, abstract, year) and filter out missing abstracts
+    meta = fetch_metadata(candidates['pid'].tolist())
+    merged = candidates.merge(meta[['pid','abstract','year']], on='pid', how='left')
+    merged = merged[merged['abstract'].notna()]
 
-    # 3) Fetch metadata (title, abstract, year)
-    rec_core = rec_df[['pid','sim','source','hop']] if 'hop' in rec_df.columns else rec_df[['pid','sim','source']]
-    meta_rec = fetch_metadata(rec_core['pid'].tolist())
-    df_rec = rec_core.merge(meta_rec[['pid','title','abstract','year']], on='pid', how='left')
-
-    # 4) Filter by year
+    # 4) Year filter and ensure we still have abstracts
     if target_year is not None:
-        df_rec = df_rec[df_rec['year'] <= target_year]
-    if df_rec.empty:
-        raise ValueError(f"No valid candidates ≤ year {target_year}")
+        merged = merged[merged['year'] <= target_year]
+    if merged.empty:
+        raise ValueError("No valid candidates with abstracts after filtering by year and availability")
 
-    # 5) LLM rerank (fallback to sim)
+    # 5) Rerank with LLM (only on items that have abstracts)
     try:
         reranked = llm_contextual_rerank(
             paragraph,
-            df_rec[['pid','title','abstract']],
+            merged[['pid','title','abstract']],
             max_candidates=40
         )
-        predicted = reranked['pid'].tolist()
+        # ensure we only keep reranker outputs that had abstracts
+        predicted = [pid for pid in reranked['pid'] if pid in merged['pid'].tolist()]
     except Exception:
-        predicted = df_rec.sort_values('sim', ascending=False)['pid'].tolist()
+        predicted = merged['pid'].tolist()
 
-    # 6) Compute precision and hit-rate metrics
-    metrics = {}
-    for k in topk_list:
-        metrics[f"P@{k}"] = precision_at_k(predicted, true_pids, k)
-        metrics[f"HR@{k}"] = hit_rate_at_k(predicted, true_pids, k)
+    # 6) Prepare reference embeddings (skip refs without abstracts)
+    ref_meta = fetch_metadata(true_pids)
+    ref_meta = ref_meta[ref_meta['abstract'].notna()]
+    ref_embs = [np.array(embed(ab)) for ab in ref_meta['abstract'].tolist()]
 
-    # 7) Reference similarity check
-    # 7a) Fetch reference abstracts and embeddings
-    meta_true = fetch_metadata(true_pids)
-    ref_embeddings = {}
-    for pid, abst in zip(meta_true['pid'], meta_true['abstract']):
-        if isinstance(abst, str) and abst.strip():
-            ref_embeddings[pid] = np.array(embed(abst))
-    # 7b) Evaluate each recommended paper against all references
-    sim_results = []
+    # 7) Build similarity map for predicted
+    abst_map = dict(zip(merged['pid'], merged['abstract']))
+    sim_map = {}
     for pid in predicted:
-        row = df_rec[df_rec['pid'] == pid]
-        abst = row['abstract'].iloc[0] if 'abstract' in row else None
-        if not isinstance(abst, str) or not abst.strip():
-            sim_results.append((pid, None, False))
+        abst = abst_map.get(pid)
+        if not abst:
+            sim_map[pid] = False
             continue
-        emb_rec = np.array(embed(abst))
-        # compute max cosine across all refs
-        max_sim = 0.0
-        for ref_emb in ref_embeddings.values():
-            s = cosine_similarity(emb_rec, ref_emb)
-            if s > max_sim:
-                max_sim = s
-        correct = (max_sim >= SIM_THRESHOLD)
-        sim_results.append((pid, max_sim, correct))
+        rec_emb = np.array(embed(abst))
+        max_sim = max((cosine_similarity(rec_emb, r) for r in ref_embs), default=0.0)
+        sim_map[pid] = (max_sim >= SIM_THRESHOLD)
 
-    # 8) Attach similarity results to metrics
-    metrics['similarity_results'] = sim_results
-    return metrics
+    # 8) Compute similarity-based metrics
+    results = {}
+    for k in TOPK_LIST:
+        results[f"P@{k}"] = precision_by_sim(predicted, sim_map, k)
+        results[f"HR@{k}"] = hit_rate_by_sim(predicted, sim_map, k)
+    results['sim_map'] = sim_map
+    return results
 
-# ─── Main evaluation loop ──────────────────────────────────────────────────────
+# ─── MAIN LOOP ─────────────────────────────────────────────────────────────────
+def main(testset_path: str, max_cases: int = 2):
+    if not os.path.isfile(testset_path):
+        raise FileNotFoundError(f"Testset file not found: {testset_path}")
+    df = pd.read_json(testset_path, lines=True).head(max_cases)
 
-def main(testset_path, max_cases=):
-    df = pd.read_json(testset_path, lines=True)
-    df = df.head(max_cases)
-    cases = df.to_dict(orient='records')
+    all_metrics = []
+    for case in df.to_dict(orient='records'):
+        para = case['paragraph']
+        refs = case.get('references', [])
+        cid  = case.get('id') or case.get('doi')
+        year = case.get('year') or fetch_year_by_doi(case.get('doi'))
+        metrics = evaluate_case(para, refs, target_year=year)
+        metrics['case_id'] = cid
+        all_metrics.append(metrics)
 
-    all_results = []
-    for case in cases:
-        paragraph = case['paragraph']
-        true_pids = case['references']
-        case_id    = case.get('id') or case.get('doi')
-        target_year= case.get('year') or fetch_year_by_doi(case.get('doi'))
-
-        res = evaluate_case(paragraph, true_pids, target_year)
-        res['case_id'] = case_id
-        all_results.append(res)
-
-    # Build a summary DataFrame
-    rows = []
-    for r in all_results:
-        base = {k: v for k, v in r.items() if k.startswith('P@') or k.startswith('HR@')}
-        base['case_id'] = r['case_id']
-        rows.append(base)
-    summary = pd.DataFrame(rows).set_index('case_id')
-
-    print("Per-case metrics:\n", summary)
-    print("\nAverage metrics:\n", summary.mean())
-    # Optionally, print similarity details for the first case
-    print("\nSample similarity results for first case:")
-    print(all_results[0]['similarity_results'])
+    res_df = pd.DataFrame(all_metrics).set_index('case_id')
+    print("Per-case metrics:\n", res_df)
+    print("\nAverage metrics:\n", res_df.mean())
 
 if __name__ == '__main__':
-    path = os.getenv('TESTSET_PATH', 'datasets/testset_300_references.jsonl')
+    path = os.getenv('TESTSET_PATH', '/home/abhi/Desktop/Manami/recommender-system/datasets/testset_300_references.jsonl')
     main(path)
