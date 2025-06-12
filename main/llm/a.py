@@ -1,0 +1,18 @@
+from neo4j import GraphDatabase
+driver = GraphDatabase.driver("bolt://localhost:7687", auth=("neo4j","Manami1008"))
+
+true_pids = [str(pid) for pid in [
+    1449224687, 1966957729, 1971282865, 1974201661, 1979044357,
+    1981606254, 1989022292, 2007485183, 2020919367, 2026717594,
+    2027984087, 2045034956, 2047990986, 2054897420, 2060274297,
+    2067028650, 2071443469, 2072822315, 2081989110, 2093770889,
+    2094117776, 2104846640, 2106335692, 2108880818, 2119106551,
+    2138373774, 2143938200, 2155492251, 2203808635, 2221535557,
+    2271178920, 2401736114, 2440402910, 2754711490, 2791802072,
+    2896165748
+]]
+with driver.session() as sess:
+    count = sess.run(
+        "MATCH (p:Paper) WHERE p.id IN $ids RETURN count(p) AS c", ids=true_pids
+    ).single()["c"]
+print("Papers present in Neo4j:", count)

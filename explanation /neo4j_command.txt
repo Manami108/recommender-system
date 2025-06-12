@@ -7,6 +7,8 @@ sudo -u neo4j neo4j stop
 
 2. run the following command in the terminal to move the csv file into neo4j.
 sudo cp /media/e-soc-student/DISK2/GR/GR2_Recommendation/export_csv/*.csv /var/lib/neo4j/import/
+
+sudo cp /home/abhi/Desktop/Manami/export_csv/*.csv /var/lib/neo4j/import/
  
 3. run the following command to remove all previous databsase from neo4j 
 sudo -u neo4j rm -rf /var/lib/neo4j/data/databases/neo4j
