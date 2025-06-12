@@ -30,8 +30,8 @@ NEO4J_URI  = os.getenv("NEO4J_URI",  "bolt://localhost:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASS = os.getenv("NEO4J_PASS", "***REMOVED***")
 
-SIM_THRESHOLD = 0.75          # cosine sim threshold for “correct”
-TOPK_LIST     = (5, 10, 20)   # metrics to report
+SIM_THRESHOLD = 0.95          # cosine sim threshold for “correct”
+TOPK_LIST     = (3, 5, 10, 15, 20)   # metrics to report
 TOKENIZER     = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3-8B-Instruct")
 
 driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASS))
@@ -51,7 +51,7 @@ parser.add_argument(
 
 def fetch_year_by_doi(doi: Optional[str]) -> Optional[int]:
     """
-    If your testset uses DOIs (and you exported `doi` on Paper nodes),
+    If your testset uses DOIs (and you exported doi on Paper nodes),
     this returns the year for that DOI.  Otherwise, returns None.
     """
     if not doi:
@@ -84,6 +84,27 @@ def precision_by_sim(pred: List[str], sim_map: dict[str, bool], k: int) -> float
 def hit_rate_by_sim(pred: List[str], sim_map: dict[str, bool], k: int) -> float:
     return float(any(sim_map.get(pid, False) for pid in pred[:k]))
 
+def recall_by_sim(pred: List[str], sim_map: dict[str,bool], k: int, n_rel: int) -> float:
+    """Recall@k = # of relevant in top-k ÷ total relevant."""
+    if n_rel == 0:
+        return 0.0
+    hits = sum(1 for pid in pred[:k] if sim_map.get(pid, False))
+    return hits / n_rel
+import math
+
+def ndcg_by_sim(pred: List[str], sim_map: dict[str,bool], k: int) -> float:
+    """
+    NDCG@k: discounted gain of relevance judgements (binary) 
+    normalized by ideal DCG@k.
+    """
+    # relevance of each position 1..k
+    rels = [1 if sim_map.get(pid, False) else 0 for pid in pred[:k]]
+    # DCG = sum rel_i / log2(i+1), with i starting from 1
+    dcg = sum(rel / math.log2(idx+2) for idx, rel in enumerate(rels))
+    # IDCG: best possible ordering = all ones up to min(k, total rels)
+    ideal_rels = sorted(rels, reverse=True)
+    idcg = sum(rel / math.log2(idx+2) for idx, rel in enumerate(ideal_rels))
+    return dcg / idcg if idcg > 0 else 0.0
 
 # ──────────────────────────── DEBUG TRACING ─────────────────────────── #
 
@@ -176,9 +197,12 @@ def evaluate_case(
 
     # 8) Compute metrics
     results: dict[str, float] = {}
+    n_rel = len([pid for pid in true_pids if pid in sim_map and sim_map[pid]])
     for k in TOPK_LIST:
-        results[f"P@{k}"]  = precision_by_sim(predicted, sim_map, k)
-        results[f"HR@{k}"] = hit_rate_by_sim(predicted, sim_map, k)
+        results[f"P@{k}"]     = precision_by_sim(predicted, sim_map, k)
+        results[f"R@{k}"]     = recall_by_sim(predicted, sim_map, k, n_rel)
+        results[f"HR@{k}"]    = hit_rate_by_sim(predicted, sim_map, k)
+        results[f"NDCG@{k}"]  = ndcg_by_sim(predicted, sim_map, k)
 
     # Attach debug tables if requested
     if debug:
@@ -199,7 +223,7 @@ def main(testset_path: Path, max_cases: int, debug: bool):
         para = case["paragraph"]
         refs = case.get("references", [])
         cid  = case.get("id") or case.get("doi")
-        # If your testset rows have a `doi` field, fetch that year; else None
+        # If your testset rows have a doi field, fetch that year; else None
         year = case.get("year") or fetch_year_by_doi(case.get("doi"))
 
         metrics = evaluate_case(para, refs, target_year=year, debug=debug)
