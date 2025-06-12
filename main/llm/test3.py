@@ -255,7 +255,7 @@ def main(testset_path: Path, max_cases: int):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--testset", type=Path, default=default_path)
-    parser.add_argument("--max_cases", type=int, default=20)
+    parser.add_argument("--max_cases", type=int, default=40)
     args = parser.parse_args()
 
     if not args.testset.is_file():
