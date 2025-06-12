@@ -1,4 +1,3 @@
-# rerank_llm.py
 from __future__ import annotations
 import json, re, logging
 from pathlib import Path
@@ -29,24 +28,32 @@ _gen = pipeline(
 _SCORE_TMPL = Path("prompts/coherence3.prompt").read_text()
 
 # Try the RESULT-tags first…
-# Existing:
 _JSON_RE = re.compile(r"<RESULT>\s*(\[[\s\S]*?\])\s*</RESULT>", re.MULTILINE)
-
 # New: match fenced JSON blocks too
 _FENCED_JSON = re.compile(r"```(?:json)?\s*(\[[\s\S]*?\])\s*```", re.MULTILINE)
+
 
 def batch_df(df: pd.DataFrame, batch_size: int):
     """Yield successive DataFrame chunks of size batch_size."""
     for i in range(0, len(df), batch_size):
         yield df.iloc[i : i + batch_size]
 
+
 def llm_contextual_rerank(
     paragraph: str,
     candidates: pd.DataFrame,
     k: int = 10,
-    batch_size: int = 10
+    batch_size: int = 10,
+    max_candidates: int = 40,
 ) -> pd.DataFrame:
-    """Return top-k candidates with LLM-derived coherence scores in batches."""
+    """
+    Return top-k candidates with LLM-derived coherence scores in batches.
+    Limits the number of input candidates to `max_candidates` to reduce memory usage.
+    """
+    # 0) limit candidates for memory efficiency
+    if len(candidates) > max_candidates:
+        candidates = candidates.iloc[:max_candidates].copy()
+
     all_scores = []
 
     for batch in batch_df(candidates, batch_size):
