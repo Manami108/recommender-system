@@ -257,7 +257,7 @@ if __name__ == "__main__":
     testset_path = default_path
 
     # 2) set your defaults here
-    max_cases = 20
+    max_cases = 3
     debug     = False
 
     if not testset_path.is_file():
