@@ -11,50 +11,55 @@ logging.basicConfig(level=logging.INFO)
 _MODEL_ID = "meta-llama/Meta-Llama-3-8B-Instruct"
 _tok  = AutoTokenizer.from_pretrained(_MODEL_ID)
 _mdl  = AutoModelForCausalLM.from_pretrained(
-            _MODEL_ID,
-            device_map="auto",
-            torch_dtype="auto")
+    _MODEL_ID,
+    device_map="auto",
+    torch_dtype="auto"
+)
 _gen = pipeline(
-    "text-generation",
-    model=_mdl,
-    tokenizer=_tok,
-    max_new_tokens=1000,
-    do_sample=False,
-    pad_token_id=_tok.eos_token_id,
-    return_full_text=False,
+  "text-generation",
+  model=_mdl,
+  tokenizer=_tok,
+  max_new_tokens=1000,
+  do_sample=False,
+  temperature=0,
+  top_p=1,
+  pad_token_id=_tok.eos_token_id,
+  return_full_text=False,
+  verbosity="error",
 )
 
 # ── 2. load prompt template once ──────────────────────────────────
-_SCORE_TMPL = Path("prompts/cot_few.prompt").read_text()
+_SCORE_TMPL = Path("prompts/cars3.prompt").read_text()
 
-# Try the RESULT-tags first…
-_JSON_RE = re.compile(r"<RESULT>\s*(\[[\s\S]*?\])\s*</RESULT>", re.MULTILINE)
-# New: match fenced JSON blocks too
+_JSON_RE     = re.compile(r"<RESULT>\s*(\[[\s\S]*?\])\s*</RESULT>", re.MULTILINE)
 _FENCED_JSON = re.compile(r"```(?:json)?\s*(\[[\s\S]*?\])\s*```", re.MULTILINE)
-
 
 def batch_df(df: pd.DataFrame, batch_size: int):
     """Yield successive DataFrame chunks of size batch_size."""
     for i in range(0, len(df), batch_size):
         yield df.iloc[i : i + batch_size]
 
-
 def llm_contextual_rerank(
     paragraph: str,
     candidates: pd.DataFrame,
     k: int = 10,
-    batch_size: int = 10,
     max_candidates: int = 40,
+    batch_size: int | None = None,
 ) -> pd.DataFrame:
     """
-    Return top-k candidates with LLM-derived coherence scores in batches.
-    Limits the number of input candidates to `max_candidates` to reduce memory usage.
+    Return top-k candidates with LLM-derived coherence scores.
+    - max_candidates: cap # of candidates before rerank
+    - batch_size: if None or >= num candidates → run one pass
     """
     # 0) limit candidates for memory efficiency
     if len(candidates) > max_candidates:
         candidates = candidates.iloc[:max_candidates].copy()
 
-    all_scores = []
+    # 1) determine batch size
+    if batch_size is None or batch_size >= len(candidates):
+        batch_size = len(candidates)
+
+    all_scores: list[pd.DataFrame] = []
 
     for batch in batch_df(candidates, batch_size):
         # Build the candidate block
@@ -73,17 +78,15 @@ def llm_contextual_rerank(
             .replace("<<<CANDIDATES>>>", cand_block)
         )
 
-        # Generate
+        # Single generation call per batch
         raw = _gen(prompt)[0]["generated_text"]
 
-        # 1) Try extracting via <RESULT> tags
-        m = _JSON_RE.search(raw)
-        if not m:
-            m = _FENCED_JSON.search(raw)
+        # Try to extract JSON
+        m = _JSON_RE.search(raw) or _FENCED_JSON.search(raw)
         if m:
             json_text = m.group(1)
         else:
-            # 2) Fallback: strip everything before first '[' and after last ']'
+            # fallback
             start = raw.find('[')
             end   = raw.rfind(']') + 1
             if start == -1 or end == 0:
@@ -91,7 +94,6 @@ def llm_contextual_rerank(
                 continue
             json_text = raw[start:end]
 
-        # Parse JSON
         try:
             batch_scores = pd.DataFrame(json.loads(json_text))
         except Exception as e:
@@ -103,7 +105,7 @@ def llm_contextual_rerank(
     if not all_scores:
         raise ValueError("No valid scores returned from any batch.")
 
-    # Merge all batches and pick top-k by final_score
+    # Merge all batches and pick top-k by rank
     scores_df = pd.concat(all_scores, ignore_index=True)
     scores_df["rank"] = pd.to_numeric(scores_df["rank"], errors="coerce")
     ranked = candidates.merge(scores_df, on="pid", how="inner")

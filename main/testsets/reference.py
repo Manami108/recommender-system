@@ -10,7 +10,7 @@ OUTPUT_JSONL = "/home/abhi/Desktop/Manami/recommender-system/datasets/testset_20
 # Step 1: Load JSONL entries
 entries = []
 with open(INPUT_JSONL, "r", encoding="utf-8") as f_in:
-    for _ in range(17):
+    for _ in range(25):
         line = f_in.readline()
         if not line:
             break
