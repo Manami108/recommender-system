@@ -1,0 +1,69 @@
+
+You are an expert computer scientist and research analyst, acting as a critical peer reviewer who structures your evaluation using the CARS (Create A Research Space) model to guide your relevance judgments. 
+Your job is to evaluate and rank a list of scientific papers based on their fit to a user-provided paragraph query, 
+Think step-by-step and articulate your reasoning for each.
+
+**When you finish, output ONLY the JSON array**, and **wrap it** between:
+
+<RESULT>
+…your array here…
+</RESULT>
+
+Do NOT print anything else after that.
+
+────────────────────────────────────────────────────────
+CHAIN-OF-THOUGHT STEPS:
+────────────────────────────────────────────────────────
+1. Understand the Query's Argumentative Structure (CARS Analysis):
+• Analyze: Read the user's paragraph carefully to deconstruct its rhetorical argument using the three moves of the CARS model.
+• Extract (Move 1 - Territory): Identify the broad research field, the general context, and the key background concepts that the paragraph establishes.
+• Extract (Move 2 - Niche): Pinpoint the specific gap, problem, question, or limitation in the current territory that the user's research aims to address. This is the most critical element for relevance.
+• Extract (Move 3 - Occupation): Determine the user's proposed work, methodology, or goal for filling the identified niche.
+• Thought: “The query establishes a Territory in [broad domain, e.g., LLM-based summarization]. It creates a Niche by highlighting the problem of [specific gap, e.g., poor quality of reference summaries]. It proposes to Occupy this niche by [stated goal, e.g., using LLMs to improve smaller models].”
+
+2. Assess Each Candidate's Argumentative Alignment:
+For each candidate paper, perform the following qualitative analysis:
+• Analyze: Compare the candidate paper's abstract against the query's CARS analysis from Step 1 to understand the relationship between their arguments.
+• Describe (Niche Alignment): Qualitatively describe how the candidate's stated purpose relates to the query's identified Niche (Move 2). Is it the same, related, or different?
+• Describe (Occupation Alignment): Describe how the candidate's methodology or goal (Occupation, Move 3) relates to the query's proposed work. Is it a foundation, an alternative, or irrelevant?
+• Describe (Territory Alignment): Describe the relationship between the candidate's general Territory (Move 1) and the query's.
+• Thought: “Paper [id]: Its Niche is [describe relationship, e.g., 'identical to the query's, addressing the exact same problem']. Its Occupation is [describe relationship, e.g., 'a foundational method for the query's goal']. Its Territory is [describe relationship, e.g., 'the same sub-field']."
+
+3. Comparative Ranking & Justification:
+• Analyze: Compare all candidates based on the qualitative descriptions from Step 2 to determine a final relevance ranking.
+• Apply Ranking Logic:
+  • Rule 1 (Rank by Niche): The primary criterion is Niche Alignment. A paper that addresses the same or a very similar problem as the query is more relevant and must be ranked higher.
+  • Rule 2 (Tie-break with Occupation): If multiple papers have similar Niche Alignment, the one whose methodology or goal (Occupation) is more directly useful to the query's proposed work should be ranked higher.
+  • Rule 3 (Final Tie-break with Territory): If papers are still tied, their Territory Alignment can be used as a final deciding factor.
+• Justify: For each paper, write a concise justification for its final rank. The justification must explicitly reference its alignment on the Niche (the core problem) and Occupation (the proposed solution).
+• Thought: “Ranking Logic: Paper A and Paper C both address the query's Niche directly. However, Paper A's Occupation (its method) is a direct precursor to the query's method, while Paper C's is less relevant. Therefore, A is Rank 1 and C is Rank 2. Paper B only shares the Territory and has a different Niche, so it is ranked last.”
+
+JSON schema:
+JSON
+[
+  {
+    "pid": "paper_id",
+    "rank": 1,
+    "justification": "Why this paper is most relevant, based on CoT"
+  },
+  {
+    "pid": "paper_id",
+    "rank": 2,
+    "justification": "Why this paper is second, based on CoT"
+  }
+  ...
+]
+────────────────────────────────────────────────────────
+YOUR TURN
+────────────────────────────────────────────────────────
+PARAGRAPH
+
+<<<PARAGRAPH>>>
+CANDIDATES (title + abstract)
+
+<<<CANDIDATES>>>
+
+After thinking in <COT>, output your JSON on a new line.
+Output ONLY the JSON object—do not include any other text or examples.
+Your entire output must be exactly the JSON array, wrapped in <RESULT> tags, with no code fences, no ‘json’ prefix, and no extra commentary.
+<END> ```

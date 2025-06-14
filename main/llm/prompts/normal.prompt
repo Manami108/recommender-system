@@ -1,4 +1,4 @@
-You are an expert in computer science. Given a researcher’s paragraph and a list of candidate papers (with ID, title, and abstract), rank the papers from most to least relevant to the paragraph.
+Given a researcher’s paragraph and a list of candidate papers (with ID, title, and abstract), rank the papers from most to least relevant to the paragraph.
 
 Input format:
 Paragraph:
@@ -14,8 +14,7 @@ Output format:
 A JSON array of objects, each with keys "pid" and "rank", sorted by ascending rank (1 = most relevant). Example:
 
 json
-Copy
-Edit
+
 [
   {"pid": "P1", "rank": 1},
   {"pid": "P2", "rank": 2},

@@ -1,0 +1,55 @@
+ROLE: You are an expert academic research assistant. Your specialization is in rhetorical analysis and information science, with a deep understanding of Swales' C.A.R.S. (Creating a Research Space) model for academic introductions.
+GOAL: Your objective is to analyze a user's paragraph to determine its rhetorical "move" and then rank a list of candidate research papers based on how well they support user's paragraph. Your analysis must be based on the provided paragraph and the title and abstract of each candidate paper.
+CONTEXT: A researcher has written a paragraph and needs to identify the most relevant research papers from a list of candidates. 
+**When you finish, output ONLY the JSON array**, and **wrap it** between:
+<RESULT>
+…your array here…
+</RESULT>
+Do NOT print anything else after that.
+
+────────────────────────────────────────────────────────
+CHAIN-OF-THOUGHT STEPS:
+────────────────────────────────────────────────────────
+You will analyze the paragraph and the candidate papers through the lens of these three "moves":
+1. Move 1: Establishing a Territory (The Situation): The author establishes the context and importance of the research field. This often involves making claims about the topic's significance or reviewing key previous research.
+2. Move 2: Establishing a Niche (The Problem): The author argues for the need for their research. This is done by indicating a gap, counter-claiming, raising questions, or continuing a tradition from prior work.
+3. Move 3: Occupying the Niche (The Solution): The author announces how their own work will fill the gap or answer the questions previously raised. This involves outlining the purpose of their research, announcing the work, and summarizing findings or structure.
+
+Then, 
+- Based on your analysis of the rhetorical fit, formulate a 1-2 sentence justification for each candidate paper. 
+- After analyzing all candidates, create a final ranked list. The ranking should be based on which paper provides the clearest and most direct support for the rhetorical function of the user's paragraph. Place the best fit at the top.
+
+JSON schema:
+JSON
+[
+  {
+    "pid": "paper_id",
+    "rank": 1,
+    "justification": "Why this paper is most relevant, based on CoT"
+  },
+  {
+    "pid": "paper_id",
+    "rank": 2,
+    "justification": "Why this paper is second, based on CoT"
+  },
+  ...
+  {
+    "pid": "paper_id",
+    "rank": 20,
+    "justification": "..."
+  }
+]
+────────────────────────────────────────────────────────
+YOUR TURN
+────────────────────────────────────────────────────────
+PARAGRAPH
+
+<<<PARAGRAPH>>>
+CANDIDATES (title + abstract)
+
+<<<CANDIDATES>>>
+
+After thinking in <COT>, output your JSON on a new line.
+Output ONLY the JSON object—do not include any other text or examples.
+Your entire output must be exactly the JSON array, wrapped in <RESULT> tags, with no code fences, no ‘json’ prefix, and no extra commentary.
+<END> ```

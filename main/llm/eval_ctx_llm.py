@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# eval_ctx_llm.py (fixed chunk-only recall)
+# eval_ctx_llm.py (with one-to-one ground truth matching)
 # ---------------------------------------------------------------------------
 # Evaluate LLM contextual-prompt reranking over four recall sources:
 #   1) full-text BM25
@@ -7,6 +7,7 @@
 #   3) full embedding
 #   4) chunked embedding
 # then rerank via contextual LLM
+# Metrics updated to use one-to-one matching of recommendations to references.
 # ---------------------------------------------------------------------------
 
 import os
@@ -30,8 +31,8 @@ from transformers import AutoTokenizer
 # ─────────────────────────── CONFIG ──────────────────────────────────────── #
 
 TESTSET_PATH  = Path("/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020_references.jsonl")
-MAX_CASES     = 3
-SIM_THRESHOLD = 0.95
+MAX_CASES     = 25
+SIM_THRESHOLD = 0.90
 TOPK_LIST     = (3, 5, 10, 15, 20)
 
 NEO4J_URI  = os.getenv("NEO4J_URI",  "bolt://localhost:7687")
@@ -47,33 +48,6 @@ TOKENIZER = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3-8B-Instruct")
 def cosine_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return a @ b.T
 
-def precision_by_sim(pred, sim_map, k):
-    return sum(sim_map.get(p, False) for p in pred[:k]) / k if k else 0.0
-
-def recall_by_sim(pred, sim_map, k, n_rel):
-    return sum(sim_map.get(p, False) for p in pred[:k]) / n_rel if n_rel else 0.0
-
-def hit_rate_by_sim(pred, sim_map, k):
-    return float(any(sim_map.get(p, False) for p in pred[:k]))
-
-def ndcg_by_sim(pred, sim_map, k):
-    rels = [1 if sim_map.get(p, False) else 0 for p in pred[:k]]
-    dcg  = sum(r/np.log2(i+2) for i, r in enumerate(rels))
-    ideal = sorted(rels, reverse=True)
-    idcg  = sum(r/np.log2(i+2) for i, r in enumerate(ideal))
-    return dcg/idcg if idcg>0 else 0.0
-
-def fetch_year_by_doi(doi: Optional[str]) -> Optional[int]:
-    if not doi:
-        return None
-    try:
-        q = "MATCH (p:Paper {doi:$doi}) RETURN p.year AS year"
-        with driver.session() as sess:
-            rec = sess.run(q, doi=doi).single()
-        return rec.get("year") if rec and rec.get("year") is not None else None
-    except:
-        return None
-
 # ─────────────────────────── EVALUATION ─────────────────────────────────── #
 
 def evaluate_case(paragraph: str,
@@ -86,41 +60,28 @@ def evaluate_case(paragraph: str,
     # 2) Recall from four sources
     bm25_full  = recall_fulltext(cleaned, k=40).assign(source="full_bm25")
     # chunk-level BM25: union across chunks
-    bm25_rows = []
-    for ch in chunks:
-        bm25_rows.append(recall_fulltext(ch, k=40))
-    chunk_bm25 = (
-        pd.concat(bm25_rows, ignore_index=True)
-          .drop_duplicates("pid")
-          .assign(source="chunk_bm25")
-    )
+    bm25_rows = [recall_fulltext(ch, k=40) for ch in chunks]
+    chunk_bm25 = (pd.concat(bm25_rows, ignore_index=True)
+                    .drop_duplicates("pid")
+                    .assign(source="chunk_bm25"))
     full_vec   = recall_vector(embed(cleaned), k=40, sim_threshold=0.30).assign(source="full_vec")
-    # chunk-level embedding: union across chunks
-    vec_rows = []
-    for ch in chunks:
-        vec_rows.append(recall_vector(embed(ch), k=40, sim_threshold=0.30))
-    chunk_vec  = (
-        pd.concat(vec_rows, ignore_index=True)
-          .drop_duplicates("pid")
-          .assign(source="chunk_vec")
-    )
+    vec_rows = [recall_vector(embed(ch), k=40, sim_threshold=0.30) for ch in chunks]
+    chunk_vec  = (pd.concat(vec_rows, ignore_index=True)
+                    .drop_duplicates("pid")
+                    .assign(source="chunk_vec"))
 
-    # 3) Combine & dedupe
+    # 3) Combine & dedupe candidates
     pool = pd.concat([bm25_full, chunk_bm25, full_vec, chunk_vec], ignore_index=True)
-    candidates = (
-        pool
-        .sort_values(["source","sim"], ascending=[True, False])
-        .drop_duplicates("pid", keep="first")
-        .reset_index(drop=True)
-    )
+    candidates = (pool
+                  .sort_values(["source","sim"], ascending=[True, False])
+                  .drop_duplicates("pid", keep="first")
+                  .reset_index(drop=True))
 
-    # 4) Metadata & filter
+    # 4) Metadata & filter by year
     meta   = fetch_metadata(candidates["pid"].tolist())
-    merged = (
-        candidates
-        .merge(meta[["pid","abstract","year"]], on="pid", how="left")
-        .dropna(subset=["abstract"])
-    )
+    merged = (candidates
+              .merge(meta[["pid","abstract","year"]], on="pid", how="left")
+              .dropna(subset=["abstract"]))
     if target_year is not None:
         merged = merged[merged["year"] <= target_year]
     if merged.empty:
@@ -131,31 +92,58 @@ def evaluate_case(paragraph: str,
         rer = llm_contextual_rerank(
             paragraph,
             merged[["pid","title","abstract"]],
-            max_candidates=len(merged)
+            max_candidates=len(merged),
+            batch_size=len(merged)
         )
-        predicted = [pid for pid in rer["pid"] if pid in merged["pid"].tolist()]
+        predicted = rer["pid"].tolist()
     except Exception:
         predicted = merged["pid"].tolist()
 
     # 6) Prepare reference embeddings
-    str_refs = [str(p) for p in true_pids]
-    ref_meta = fetch_metadata(str_refs).dropna(subset=["abstract"])
-    n_rel    = len(ref_meta)
-    ref_embs = np.stack([embed(a) for a in ref_meta["abstract"]]) if n_rel else np.zeros((0,768))
+    ref_meta = fetch_metadata([str(p) for p in true_pids]).dropna(subset=["abstract"])
+    ref_ids  = ref_meta["pid"].tolist()
+    ref_embs = np.stack([embed(a) for a in ref_meta["abstract"]]) if ref_ids else np.zeros((0,768))
 
-    # 7) Compute sim_map & metrics
-    cand_absts = merged.set_index("pid").loc[predicted, "abstract"].tolist()
-    cand_embs  = np.stack([embed(a) for a in cand_absts])
-    sims       = cosine_matrix(cand_embs, ref_embs) if n_rel else np.zeros((len(predicted),0))
-    max_sims   = sims.max(axis=1) if n_rel else np.zeros(len(predicted))
-    sim_map    = {pid: (s>=SIM_THRESHOLD) for pid,s in zip(predicted, max_sims)}
+    # 7) Prepare candidate embeddings
+    cand_ids  = predicted
+    cand_absts= merged.set_index("pid").loc[cand_ids, "abstract"].tolist()
+    cand_embs = np.stack([embed(a) for a in cand_absts])
 
+    # 8) Compute similarity matrix
+    sims = cosine_matrix(cand_embs, ref_embs) if ref_ids else np.zeros((len(cand_ids),0))
+
+    # 9) One-to-one greedy matching
+    unmatched = set(range(len(ref_ids)))
+    hits = []
+    for i in range(len(cand_ids)):
+        if not unmatched:
+            hits.append(False)
+            continue
+        # find best unmatched ref for this candidate
+        ref_idxs = list(unmatched)
+        sim_vals = sims[i, ref_idxs]
+        best_j  = sim_vals.argmax()
+        best_sim= sim_vals[best_j]
+        if best_sim >= SIM_THRESHOLD:
+            hits.append(True)
+            unmatched.remove(ref_idxs[best_j])
+        else:
+            hits.append(False)
+
+    # 10) Compute metrics
     results = {}
+    n_rel    = len(ref_ids)
     for k in TOPK_LIST:
-        results[f"P@{k}"]    = precision_by_sim(predicted, sim_map, k)
-        results[f"R@{k}"]    = recall_by_sim(predicted, sim_map, k, n_rel)
-        results[f"HR@{k}"]   = hit_rate_by_sim(predicted, sim_map, k)
-        results[f"NDCG@{k}"] = ndcg_by_sim(predicted, sim_map, k)
+        topk = hits[:k]
+        results[f"P@{k}"]  = sum(topk)/k
+        results[f"HR@{k}"] = float(any(topk))
+        covered = sum(topk)
+        results[f"R@{k}"]  = covered / n_rel if n_rel else 0.0
+        # NDCG
+        dcg  = sum(r/np.log2(i+2) for i,r in enumerate(topk))
+        idcg = sum(1/np.log2(i+2) for i in range(min(n_rel,k)))
+        results[f"NDCG@{k}"] = dcg/idcg if idcg>0 else 0.0
+
     return results
 
 
@@ -163,7 +151,7 @@ def main():
     df = pd.read_json(TESTSET_PATH, lines=True).head(MAX_CASES)
     all_m = []
     for case in df.to_dict("records"):
-        yr = case.get("year") or fetch_year_by_doi(case.get("doi"))
+        yr = case.get("year") or None
         all_m.append(evaluate_case(case["paragraph"], case.get("references", []), yr))
 
     avg = pd.DataFrame(all_m).mean(numeric_only=True)
