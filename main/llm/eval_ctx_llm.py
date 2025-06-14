@@ -32,7 +32,7 @@ from transformers import AutoTokenizer
 
 TESTSET_PATH  = Path("/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020_references.jsonl")
 MAX_CASES     = 25
-SIM_THRESHOLD = 0.90
+SIM_THRESHOLD = 0.95
 TOPK_LIST     = (3, 5, 10, 15, 20)
 
 NEO4J_URI  = os.getenv("NEO4J_URI",  "bolt://localhost:7687")
@@ -96,6 +96,7 @@ def evaluate_case(paragraph: str,
             batch_size=len(merged)
         )
         predicted = rer["pid"].tolist()
+        print(rer.head())
     except Exception:
         predicted = merged["pid"].tolist()
 
@@ -157,6 +158,7 @@ def main():
     avg = pd.DataFrame(all_m).mean(numeric_only=True)
     print("\nContextual LLM rerank average metrics over four recall sources:\n")
     print(avg)
+    
 
 if __name__ == "__main__":
     main()
