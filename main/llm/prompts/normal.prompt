@@ -1,4 +1,4 @@
-You are an expert in scientific literature recommendation. Given a researcher’s paragraph and a list of candidate papers (with ID, title, and abstract), rank the papers from most to least relevant to the paragraph.
+You are an expert in computer science. Given a researcher’s paragraph and a list of candidate papers (with ID, title, and abstract), rank the papers from most to least relevant to the paragraph.
 
 Input format:
 Paragraph:

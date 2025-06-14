@@ -2,15 +2,15 @@ import json
 import pandas as pd
 
 # ====== File Paths ======
-INPUT_JSONL = "/media/e-soc-student/DISK2/GR/GR2_Recommendation/datasets/big/testset_300.jsonl"  # this is JSONL
-DBLP_CSV = "/media/e-soc-student/DISK2/GR/GR2_Recommendation/datasets/big/dblp.v12.csv"
-OUTPUT_JSONL = "/media/e-soc-student/DISK2/GR/GR2_Recommendation/datasets/big/testset_300_references.jsonl"
+INPUT_JSONL = "/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020.jsonl"  # this is JSONL
+DBLP_CSV = "/home/abhi/Desktop/Manami/recommender-system/datasets/dblp.v12.csv"
+OUTPUT_JSONL = "/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020_references.jsonl"
 # ========================
 
 # Step 1: Load JSONL entries
 entries = []
 with open(INPUT_JSONL, "r", encoding="utf-8") as f_in:
-    for _ in range(100):
+    for _ in range(17):
         line = f_in.readline()
         if not line:
             break
