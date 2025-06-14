@@ -19,20 +19,21 @@ _gen = pipeline(
   "text-generation",
   model=_mdl,
   tokenizer=_tok,
-  max_new_tokens=1000,
-  do_sample=False,
-  temperature=0,
-  top_p=1,
+  max_new_tokens=50000,
+  do_sample=True,
+  temperature=0.3,
+  top_p=0.9,
   pad_token_id=_tok.eos_token_id,
   return_full_text=False,
   verbosity="error",
 )
 
 # ── 2. load prompt template once ──────────────────────────────────
-_SCORE_TMPL = Path("prompts/cars3.prompt").read_text()
+_SCORE_TMPL = Path("prompts/cot_few.prompt").read_text()
 
 _JSON_RE     = re.compile(r"<RESULT>\s*(\[[\s\S]*?\])\s*</RESULT>", re.MULTILINE)
 _FENCED_JSON = re.compile(r"```(?:json)?\s*(\[[\s\S]*?\])\s*```", re.MULTILINE)
+
 
 def batch_df(df: pd.DataFrame, batch_size: int):
     """Yield successive DataFrame chunks of size batch_size."""
@@ -78,8 +79,20 @@ def llm_contextual_rerank(
             .replace("<<<CANDIDATES>>>", cand_block)
         )
 
+        print("\n🔍 PROMPT PREVIEW (first 300 chars):")
+        print(prompt[:300])
+        print("…\n") 
+
         # Single generation call per batch
-        raw = _gen(prompt)[0]["generated_text"]
+        raw = _gen(
+            prompt,
+            max_new_tokens=50000,  # or whatever your desired max is
+            do_sample=True,
+            temperature=0.3,
+            top_p=0.9,
+            use_cache=False      # disable HF’s intra-call KV cache
+            )[0]["generated_text"]
+
 
         # Try to extract JSON
         m = _JSON_RE.search(raw) or _FENCED_JSON.search(raw)
@@ -112,3 +125,5 @@ def llm_contextual_rerank(
     ranked = ranked.sort_values("rank", ascending=True)
 
     return ranked.head(k)
+
+
