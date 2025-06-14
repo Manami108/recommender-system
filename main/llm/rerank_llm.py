@@ -25,7 +25,7 @@ _gen = pipeline(
 )
 
 # ── 2. load prompt template once ──────────────────────────────────
-_SCORE_TMPL = Path("prompts/coherence3.prompt").read_text()
+_SCORE_TMPL = Path("prompts/coherence_score.prompt").read_text()
 
 # Try the RESULT-tags first…
 _JSON_RE = re.compile(r"<RESULT>\s*(\[[\s\S]*?\])\s*</RESULT>", re.MULTILINE)
