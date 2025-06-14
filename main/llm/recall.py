@@ -73,6 +73,7 @@ def recall_fulltext(
     cypher = """
         CALL db.index.fulltext.queryNodes($idx, $q, {limit:$k})
         YIELD node, score
+        WHERE node.year <> 2020
         RETURN node.id AS pid,
                node.title AS title,
                node.year  AS year,
@@ -96,6 +97,7 @@ def recall_vector(
         YIELD node, score
         WITH node, (1.0 - score) AS sim
         WHERE sim >= $th
+        AND node.year <> 2020
         RETURN node.id    AS pid,
                node.title AS title,
                node.year  AS year,

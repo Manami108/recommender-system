@@ -12,7 +12,7 @@ from chunking import clean_text
 from recall import recall_fulltext, fetch_metadata, embed
 
 # Hard-coded testset path and params
-TESTSET_PATH   = Path("/home/abhi/Desktop/Manami/recommender-system/datasets/testset_300_references.jsonl")
+TESTSET_PATH   = Path("/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020_references.jsonl")
 MAX_CASES      = 3
 SIM_THRESHOLD  = 0.95
 TOPK_LIST      = (3, 5, 10, 15, 20)

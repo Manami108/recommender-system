@@ -29,8 +29,8 @@ from transformers import AutoTokenizer
 
 # ─────────────────────────── CONFIG ──────────────────────────────────────── #
 
-TESTSET_PATH  = Path("/home/abhi/Desktop/Manami/recommender-system/datasets/testset_300_references.jsonl")
-MAX_CASES     = 2
+TESTSET_PATH  = Path("/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020_references.jsonl")
+MAX_CASES     = 3
 SIM_THRESHOLD = 0.95
 TOPK_LIST     = (3, 5, 10, 15, 20)
 
