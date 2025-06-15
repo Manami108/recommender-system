@@ -10,14 +10,14 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 # ──────────────────────────── CONFIG ──────────────────────────── #
 _MODEL_ID  = os.getenv("LLAMA_MODEL",  "meta-llama/Meta-Llama-3-8B-Instruct")
 _DEVICE    = os.getenv("LLAMA_DEVICE", "auto")
-MAX_GEN    = 2048
+MAX_GEN    = 8192
 MAX_ABS_CH = 750
-BATCH_SIZE = 6
+BATCH_SIZE = 3
 MAX_POOL   = 40
 TOK_HEAD   = 6144
 
 # path to your prompt template
-_PROMPT_PATH = Path(__file__).parent / "prompts" / "normal.prompt"
+_PROMPT_PATH = Path(__file__).parent / "prompts" / "cars.prompt"
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 

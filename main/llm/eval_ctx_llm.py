@@ -80,7 +80,7 @@ def evaluate_case(
             cand[["pid", "title", "abstract"]],
             k=20,                # top-k to keep
             max_candidates=15,   # truncate for prompt
-            batch_size=5
+            batch_size=3
         )
         predicted = reranked["pid"].tolist()
     except RerankError as e:
