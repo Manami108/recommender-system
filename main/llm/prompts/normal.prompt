@@ -1,25 +1,31 @@
-Given a researcher’s paragraph and a list of candidate papers (with ID, title, and abstract), rank the papers from most to least relevant to the paragraph.
+<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+ROLE: You are an expert academic research assistant. 
 
-Input format:
-Paragraph:
+GOAL: Given a researcher’s paragraph and a list of candidate papers (with ID, title, and abstract), rank the papers from most to least relevant to the paragraph.
+
+INSTRUCTIONS:
+1. Produce **only** a JSON array wrapped in `<RESULT>…</RESULT>`, **with exactly these keys** per element:
+   ```json
+   [
+     {
+       "pid": "paper_id",
+       "rank": 1,
+     },
+     {
+       "pid": "paper_id",
+       "rank": 2,
+     },
+     …
+   ]
+2. Do not include any other keys (no "score", no "candidate" in the final output).
+
+<|eot_id|><|start_header_id|>user<|end_header_id|>
+Below is the paragraph and the candidate papers:
+
 <<<PARAGRAPH>>>
 
-Candidates:
-<<<For each paper>>>
-PID: <paper_id>
-Title: <title>
-Abstract: <abstract>
+<<<CANDIDATES>>>
 
-Output format:
-A JSON array of objects, each with keys "pid" and "rank", sorted by ascending rank (1 = most relevant). Example:
+When you’re ready, output only:
 
-json
-
-[
-  {"pid": "P1", "rank": 1},
-  {"pid": "P2", "rank": 2},
-  …
-]
-Important: Output only the JSON array—no other text.
-
-This gives the model a clear instruction without exposing your internal reasoning steps.
+<RESULT> [ … JSON array as specified above … ] </RESULT> <|eot_id|> ```

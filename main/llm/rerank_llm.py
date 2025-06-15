@@ -19,7 +19,7 @@ _gen = pipeline(
   "text-generation",
   model=_mdl,
   tokenizer=_tok,
-  max_new_tokens=50000,
+  max_new_tokens=2000,
   do_sample=True,
   temperature=0.3,
   top_p=0.9,
@@ -29,7 +29,7 @@ _gen = pipeline(
 )
 
 # ── 2. load prompt template once ──────────────────────────────────
-_SCORE_TMPL = Path("prompts/cot_few.prompt").read_text()
+_SCORE_TMPL = Path("prompts/cars3.prompt").read_text()
 
 _JSON_RE     = re.compile(r"<RESULT>\s*(\[[\s\S]*?\])\s*</RESULT>", re.MULTILINE)
 _FENCED_JSON = re.compile(r"```(?:json)?\s*(\[[\s\S]*?\])\s*```", re.MULTILINE)
@@ -43,7 +43,7 @@ def batch_df(df: pd.DataFrame, batch_size: int):
 def llm_contextual_rerank(
     paragraph: str,
     candidates: pd.DataFrame,
-    k: int = 10,
+    k: int = 20,
     max_candidates: int = 40,
     batch_size: int | None = None,
 ) -> pd.DataFrame:
@@ -86,7 +86,7 @@ def llm_contextual_rerank(
         # Single generation call per batch
         raw = _gen(
             prompt,
-            max_new_tokens=50000,  # or whatever your desired max is
+            max_new_tokens=2000,  # or whatever your desired max is
             do_sample=True,
             temperature=0.3,
             top_p=0.9,
