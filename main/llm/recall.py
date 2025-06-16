@@ -140,11 +140,9 @@ def recall_by_chunks(
     if not records:
         return pd.DataFrame(columns=["pid","bm25_score","semantic_score","source","rank"])
     pool = pd.concat(records, ignore_index=True)
-    # ensure semantic_score column exists in BM25-only records
-    if "semantic_score" not in pool.columns:
-        pool["semantic_score"] = pool.get("semantic_score", 0)
-    if "bm25_score" not in pool.columns:
-        pool["bm25_score"] = pool.get("bm25_score", 0)
+    # replace any NaN in either score column with 0.0
+    pool["semantic_score"] = pool.get("semantic_score", 0.0).fillna(0.0)
+    pool["bm25_score"]     = pool.get("bm25_score",    0.0).fillna(0.0)
     return pool
 
 # This uses Reciprocal Rank Fusion (RRF) score 
