@@ -1,112 +1,157 @@
+# This code is to rerank those candidates using LLM based on how relevant each paper is to a given input paragraph. 
+
 from __future__ import annotations
-import json, re, logging
+import json, logging, os, re, sys
 from pathlib import Path
+from typing import List
 
 import pandas as pd
-from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 
-logging.basicConfig(level=logging.INFO)
+# config
+_MODEL_ID  = os.getenv("LLAMA_MODEL",  "meta-llama/Meta-Llama-3-8B-Instruct")
+_DEVICE    = os.getenv("LLAMA_DEVICE", "auto")
+MAX_GEN    = 8192 # max tokens to generate per prompt
+MAX_ABS_CH = 750  # max characters of abstract to include
+BATCH_SIZE = 3 # how many candidates per LLM call
+MAX_POOL   = 60  # cap on total candidates before batching
+TOK_HEAD   = 6144  # max context tokens (after tokenization)
 
-# ── 1. model & generator ───────────────────────────────────────────
-_MODEL_ID = "meta-llama/Meta-Llama-3-8B-Instruct"
-_tok  = AutoTokenizer.from_pretrained(_MODEL_ID)
-_mdl  = AutoModelForCausalLM.from_pretrained(
-            _MODEL_ID,
-            device_map="auto",
-            torch_dtype="auto")
+# path to prompt
+# https://www.promptingguide.ai/jp/techniques/cot
+# https://www.llama.com/docs/model-cards-and-prompt-formats/llama3_1/
+# https://medium.com/@tahirbalarabe2/prompt-engineering-with-llama-3-3-032daa5999f7
+
+
+_PROMPT_PATH = Path(__file__).parent / "prompts" / "cars2.prompt"
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
+# LLM model 
+_tok = AutoTokenizer.from_pretrained(_MODEL_ID, use_default_system_prompt=False)
+_mdl = AutoModelForCausalLM.from_pretrained(_MODEL_ID, device_map=_DEVICE, torch_dtype="auto")
 _gen = pipeline(
     "text-generation",
     model=_mdl,
     tokenizer=_tok,
-    max_new_tokens=1000,
+    max_new_tokens=MAX_GEN,
     do_sample=False,
+    # temperature=0,
+    # top_p=1,
     pad_token_id=_tok.eos_token_id,
     return_full_text=False,
 )
 
-# ── 2. load prompt template once ──────────────────────────────────
-_SCORE_TMPL = Path("prompts/coherence3.prompt").read_text()
+# load prompt once
+_PROMPT_TMPL = _PROMPT_PATH.read_text(encoding="utf-8")
 
-# Try the RESULT-tags first…
-_JSON_RE = re.compile(r"<RESULT>\s*(\[[\s\S]*?\])\s*</RESULT>", re.MULTILINE)
-# New: match fenced JSON blocks too
-_FENCED_JSON = re.compile(r"```(?:json)?\s*(\[[\s\S]*?\])\s*```", re.MULTILINE)
+# accept both <RESULT>…</RESULT> and <|RESULT|>…<|/RESULT|>
+_JSON_RE = re.compile(
+    r"(?:<\|?/?RESULT\|?>)?\s*(\[[\s\S]*?\])\s*(?:<\|?/?RESULT\|?>)?",
+    re.MULTILINE,
+)
 
+# this is for any reranking specific failures
+class RerankError(RuntimeError):
+    pass
 
-def batch_df(df: pd.DataFrame, batch_size: int):
-    """Yield successive DataFrame chunks of size batch_size."""
-    for i in range(0, len(df), batch_size):
-        yield df.iloc[i : i + batch_size]
-
-
-def llm_contextual_rerank(
+# candidates: a DataFrame with columns pid, title, abstract
+def rerank_batch(
     paragraph: str,
     candidates: pd.DataFrame,
-    k: int = 10,
-    batch_size: int = 10,
-    max_candidates: int = 40,
+    *,
+    k: int = 20, # This is how many final top papers to return 
+    max_candidates: int = MAX_POOL, # drop any beyond this before batching.
+    batch_size: int = BATCH_SIZE, # how many candidates per LLM API call.
 ) -> pd.DataFrame:
-    """
-    Return top-k candidates with LLM-derived coherence scores in batches.
-    Limits the number of input candidates to `max_candidates` to reduce memory usage.
-    """
-    # 0) limit candidates for memory efficiency
     if len(candidates) > max_candidates:
         candidates = candidates.iloc[:max_candidates].copy()
 
-    all_scores = []
+    def wrap_prompt(body: str) -> str:
+        # wrap with begin_of_text and end_of_turn
+        return (
+            "<|begin_of_text|>\n"
+            f"{body.strip()}\n"
+            "<|eot_id|>"
+        )
+    # Loops over the candidates in chunks of batch_size (e.g. 3 at a time).
+    all_scores: List[pd.DataFrame] = []
+    for start in range(0, len(candidates), batch_size):
+        part = candidates.iloc[start : start + batch_size]
 
-    for batch in batch_df(candidates, batch_size):
-        # Build the candidate block
-        cand_lines = []
-        for _, row in batch.iterrows():
-            abs_txt = (row.abstract or "").strip()
-            cand_lines.append(
-                f"{row.pid}\nTitle: {row.title}\nAbstract: {abs_txt}"
-            )
-        cand_block = "\n\n".join(cand_lines)
+        # build candidate block
+        def trunc(t: str) -> str:
+            return t if len(t) <= MAX_ABS_CH else t[:MAX_ABS_CH] + " …"
+        
+        # Concatenates each candidate’s ID, title, and a truncated abstract (so you don’t blow past the token limit).
+        cand_block = "\n\n".join(
+            f"PID: {r.pid}\nTitle: {r.title}\nAbstract: {trunc(r.abstract)}"
+            for _, r in part.iterrows()
+        )
 
-        # Fill prompt
-        prompt = (
-            _SCORE_TMPL
+        # fill template placeholders
+        sys_prompt = (
+            _PROMPT_TMPL
             .replace("<<<PARAGRAPH>>>", paragraph.strip())
             .replace("<<<CANDIDATES>>>", cand_block)
         )
+        prompt = wrap_prompt(sys_prompt)
+
+        # Ensure context length
+        if len(_tok(prompt).input_ids) > TOK_HEAD:
+            raise RerankError("Prompt too long; reduce batch size or truncate abstracts")
 
         # Generate
-        raw = _gen(prompt)[0]["generated_text"]
+        raw_out = _gen(prompt)[0]["generated_text"]
+        raw = re.sub(r"<\|(?:eot_id|eom_id)\|>.*$", "", raw_out, flags=re.DOTALL).strip()
 
-        # 1) Try extracting via <RESULT> tags
+        # Extract JSON object containing pid + score
         m = _JSON_RE.search(raw)
         if not m:
-            m = _FENCED_JSON.search(raw)
-        if m:
-            json_text = m.group(1)
-        else:
-            # 2) Fallback: strip everything before first '[' and after last ']'
-            start = raw.find('[')
-            end   = raw.rfind(']') + 1
-            if start == -1 or end == 0:
-                logging.warning("No JSON array found in LLM output. Raw:\n%s", raw)
-                continue
-            json_text = raw[start:end]
+            raise RerankError(f"No JSON object found in LLM output:\n{raw[:300]}")
+        json_text = m.group(1)
 
-        # Parse JSON
+        # Fix pid quoting
+        json_text = re.sub(r'"pid"\s*:\s*([0-9]+)', r'"pid":"\1"', json_text)
+
+        # Parse
         try:
-            batch_scores = pd.DataFrame(json.loads(json_text))
+            rec = json.loads(json_text)
         except Exception as e:
-            logging.warning("JSON parsing failed: %s\nJSON slice:\n%s", e, json_text)
-            continue
+            raise RerankError(f"JSON parse failed: {e}\nSnippet:\n{json_text[:200]}")
 
-        all_scores.append(batch_scores)
+        df = pd.DataFrame(rec)
+        df.columns = [c.lower() for c in df.columns]
+        if "pid" not in df or "score" not in df:
+            raise RerankError(f"Expected 'pid' and 'score' fields, got {df.columns.tolist()}")
+        df["pid"] = df["pid"].astype(str)
+        df["score"] = pd.to_numeric(df["score"], errors="coerce")
+
+        all_scores.append(df[["pid","score"]])
 
     if not all_scores:
-        raise ValueError("No valid scores returned from any batch.")
+        raise RerankError("No valid batches returned")
 
-    # Merge all batches and pick top-k by final_score
-    scores_df = pd.concat(all_scores, ignore_index=True)
-    scores_df["rank"] = pd.to_numeric(scores_df["rank"], errors="coerce")
-    ranked = candidates.merge(scores_df, on="pid", how="inner")
-    ranked = ranked.sort_values("rank", ascending=True)
+    # Combine and global sort
+    scores = pd.concat(all_scores, ignore_index=True)
+    merged = (
+        candidates.assign(pid=candidates["pid"].astype(str))
+        .merge(scores, on="pid", how="inner")
+        .sort_values("score", ascending=False)
+        .head(k)
+    )
+    return merged
 
-    return ranked.head(k)
+if __name__ == "__main__":
+    if len(sys.argv) != 3:
+        print("Usage: python llama_rerank.py paragraph.txt candidates.tsv")
+        sys.exit(1)
+
+    paragraph = Path(sys.argv[1]).read_text(encoding="utf-8")
+    cand_df   = pd.read_csv(sys.argv[2], sep="\t", names=["pid","title","abstract"])
+
+    try:
+        top = rerank_batch(paragraph, cand_df, k=10)
+        print(top[["pid","score"]])
+    except RerankError as err:
+        logging.error("Rerank failed: %s", err)

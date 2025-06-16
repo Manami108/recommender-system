@@ -30,8 +30,8 @@ NEO4J_URI  = os.getenv("NEO4J_URI",  "bolt://localhost:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASS = os.getenv("NEO4J_PASS", "***REMOVED***")
 
-SIM_THRESHOLD = 0.75          # cosine sim threshold for “correct”
-TOPK_LIST     = (5, 10, 20)   # metrics to report
+SIM_THRESHOLD = 0.95          # cosine sim threshold for “correct”
+TOPK_LIST     = (3, 5, 10, 15, 20)   # metrics to report
 TOKENIZER     = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3-8B-Instruct")
 
 driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASS))

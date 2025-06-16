@@ -1,14 +1,18 @@
 # This code splits the paragraph (user's query) into overlapping chunks for LLM (context window)
 
 from __future__ import annotations
-import re, itertools # text normalization
+import re # text normalization
 from typing import List, Iterator
 import nltk # natural language toolkit used for sentence toknization
 from transformers import AutoTokenizer
+import numpy as np
+from sentence_transformers import SentenceTransformer
+from nltk.tokenize.texttiling import TextTilingTokenizer
 
 # Installing NLTK Punkt tokenizer
 try:
     nltk.download('punkt_tab', quiet=True)
+    nltk.download('stopwords', quiet=True)
 except Exception:
     pass
 try:
@@ -111,3 +115,29 @@ def chunk_sentences(text: str,
 #     print("Sentence windows:")
 #     for i, c in enumerate(sent_chunks, 1):
 #         print(f"[{i}] {c}\n")
+
+# ─────────────────────────────── DEMO USAGE ─────────────────────────────────
+if __name__ == '__main__':
+    demo = """
+Humans use the gaze to look at objects. This behavior can be used as a means to control interfaces in human–computer interaction by estimating the gaze point with the help of an eye tracker. 
+Thanks to recent technological advancements and drop in price, eye tracking is no longer a niche technology only used in laboratories or by users with special needs. For example, with the price of an advanced game controller, players can enhance their gaming experience with eye tracking. 
+A gaze-aware game knows where the player’s visual attention is at each moment and can offer optional input methods and enhanced gaming experience. At the same time, research on mobile eye tracking has been active. Simple eye-awareness is already included in some cell phone models so that the phone knows when the user is looking at it. 
+Research on pervasive and mobile gaze interaction has demonstrated how eye tracking can enhance the interaction with mobile phones, tablets, smartwatches, smart glasses, and smart environments and public displays. 
+Because the eye is primarily a perceptual organ, using gaze as an intentional control method poses challenges for interaction design. Most important, viewing should not be misinterpreted as a voluntary command. In gaze interaction literature, this problem is known as the Midas touch problem, where viewed objects are unintentionally acted on. 
+Feedback plays an essential role in informing the user how the system is interpreting the gaze. Gazing at an object in real life naturally provides only visual feedback. But computers and smart devices can indicate if an object has been recognized as being pointed at, or being selected. Previous research has shown that visual and auditory feedback on gaze input significantly improve user performance and satisfaction. 
+However, the effects of haptic feedback in gaze interaction have remained largely unknown. We assume haptic feedback could provide a useful alternative to, at least the audio, as auditory and haptic perception are known to share similarities. For example, participants could perceive auditory and tactile rhythms more accurately than visual rhythms. Auditory and haptic feedback can be perceived independently from the gaze location. 
+Unlike the distal senses of vision and hearing, touch is a proximal sense that provides information of things close to or in contact with us. How would the interplay of a distal and proximal sense work? For instance, instead of seeing a button change its appearance, the user could feel the click of a button after selecting it with gaze. Could this novel combination of modalities provide some benefits compared to visual and auditory feedback, or is this unnatural combination of action and feedback perhaps incomprehensible? 
+These were the questions that motivated us in the work reported in this article. Haptic feedback has become more common in consumer technology due to the emergence of mobile and wearable devices designed to be in contact with the skin. The most popular form of haptic stimulation in mobile and wearable devices is vibrotactile feedback. For example, continuous vibration is an effective way to notify of incoming calls with mobile phones. 
+Shorter vibration bursts are used on phones and tablets to replace the tactile feel of pressing a physical key when typing with a virtual keyboard. This has been shown to improve typing speeds. Vibrotactile technology is also included in some smartwatches. In the Apple Watch, for instance, vibrotactile stimulation is used to mimic a heartbeat that can be sent to a close friend or family member. With multiple actuators, it is possible to create touch sensations that move on the wrist. 
+To date, commercial smart glasses and other head-mounted devices have not utilized vibrotactile feedback. This is surprising because it is known that users can quite accurately localize which part of the head is stimulated with vibrotactile actuators. 
+We were interested in studying how vibrotactile feedback could support gaze interaction. We conducted a series of experiments in which we focused on four main research questions: effectiveness of vibrotactile feedback, temporal limits between gaze events and vibrotactile feedback, effects of feedback location and spatial setup, and vibrotactile feedback in comparison to other modalities. Because our results are spread over more than 20 articles, this could make it difficult for future researchers to extract the main findings. 
+The contribution of this article is to summarize the research results in a compact form and serve as a collection of pointers to more detailed work in the original publications. The goal is to add to our understanding of how the two modalities of haptics and gaze can be utilized effectively in human–computer interaction. The organization of the article is as follows. We first introduce gaze interaction and vibrotactile feedback. We then present results from the experiments before discussing lessons learned from the studies. We end with general discussion and present design guidelines based on our accumulated knowledge and insights.
+    """
+    clean = clean_text(demo)
+    tok = AutoTokenizer.from_pretrained('meta-llama/Meta-Llama-3-8B-Instruct', use_fast=True)
+
+    print('--- Token Chunks ---')
+    for c in chunk_tokens(clean, tok): print(c, '\n')
+
+    print('--- Sentence Chunks ---')
+    for c in chunk_sentences(clean): print(c, '\n')

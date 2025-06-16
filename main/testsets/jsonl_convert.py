@@ -1,8 +1,8 @@
 import pandas as pd
 
 # Input and output file paths
-INPUT_DOI_FILE = "/media/e-soc-student/DISK2/GR/GR2_Recommendation/datasets/big/testset_300_doi_title.csv"
-OUTPUT_JSONL = "/media/e-soc-student/DISK2/GR/GR2_Recommendation/datasets/big/testset_300.jsonl"
+INPUT_DOI_FILE = "/home/abhi/Desktop/Manami/recommender-system/datasets/filtered_2020_doi_title.csv"
+OUTPUT_JSONL = "/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020.jsonl"
 
 import json
 
