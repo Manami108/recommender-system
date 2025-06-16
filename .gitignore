@@ -3,6 +3,7 @@ node_modules
 fais_env
 package-lock.json
 package.json
+dblp.v12.csv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
