@@ -6,7 +6,7 @@ https://docs.google.com/document/d/1w6oR8HBcd2USkIyLxnu0ILzq_3Q6FVjpHXXyZW3aknA/
 
 ## Approach
 1) Sliding window chunking based on token
-2) BM25 (TFiDF base) and embeding search -> Reciprocal Rank Fusion (RRF scoring) -> cancdidate retrievals
+2) BM25 (TFiDF-like back of words base) and embeding search -> Reciprocal Rank Fusion (RRF scoring) -> cancdidate retrievals
 3) 2 hop reasoning over citation edges and keywords and topics (should i do that?)
 4) reranking based on llm
 5) Precision, Recall, Hit Rate, NDCG based evaluations
