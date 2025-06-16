@@ -77,7 +77,7 @@ def evaluate_case(
     meta = fetch_metadata(top_cands)
     cand = meta.dropna(subset=["abstract"])
     if target_year is not None:
-        cand = cand[cand["year"] <= target_year]
+        cand = cand[cand["year"] < target_year]
     if cand.empty:
         raise ValueError("Empty candidate set after filtering by year and abstract")
 
@@ -95,7 +95,9 @@ def evaluate_case(
         print("⚠️ Rerank failed, fallback to pool order:", e)
         predicted = cand["pid"].tolist()
 
-    # 5. embed references & predicted candidates
+    # embed references & predicted candidates
+    # Calculates cosine similarities between reranked abstracts and true references.
+    # For each predicted paper, checks if any unmatched reference has sim ≥ 0.95 → it's a hit.
     ref_meta = fetch_metadata(true_pids)
     ref_meta = ref_meta.dropna(subset=["abstract"])
     ref_ids  = ref_meta["pid"].tolist()
@@ -122,7 +124,10 @@ def evaluate_case(
         else:
             hits.append(False)
 
-    # 7. compute metrics
+    # P@k  = # relevant hits in top-k / k
+    # HR@k = # whether at least one hit in top-k
+    # R@k  = # hits / total ground-truth
+    # NDCG = # relevance-weighted discounted ranking quality
     n_rel = len(ref_ids)
     out   = {}
     for k in TOPK_LIST:
@@ -136,7 +141,8 @@ def evaluate_case(
         out.update({f"P@{k}": p_at_k, f"HR@{k}": hr_at_k, f"R@{k}": r_at_k, f"NDCG@{k}": ndcg})
     return out
 
-# ───────── driver ─────────
+# main function
+# Runs evaluation over the test cases and prints the average metrics.
 def main() -> None:
     if not TESTSET_PATH.exists():
         raise FileNotFoundError(f"Testset not found at {TESTSET_PATH}")
