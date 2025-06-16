@@ -10,7 +10,7 @@ https://docs.google.com/document/d/1w6oR8HBcd2USkIyLxnu0ILzq_3Q6FVjpHXXyZW3aknA/
 4) reranking based on llm 
 
 Current Best Results 
-| Metric       | LLaMA CoT + CARS | BM25 Full Text |
+| Metric       | Zero  CoT + CARS | BM25 Full Text |
 | ------------ | ---------------- | -------------- |
 | **P\@3**     | 0.3200           | 0.2533         |
 | **HR\@3**    | 0.6000           | 0.5600         |
