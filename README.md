@@ -4,6 +4,8 @@ https://www.overleaf.com/project/68317ee77bc2d9cfe0cf412e
 ## Ideas
 https://docs.google.com/document/d/1w6oR8HBcd2USkIyLxnu0ILzq_3Q6FVjpHXXyZW3aknA/edit?hl=JA&tab=t.0
 
+## Experimental Protocol
+
 ## Approach
 1) Sliding window chunking based on token
 2) BM25 (TFiDF-like back of words base) and embeding search -> Reciprocal Rank Fusion (RRF scoring) -> cancdidate retrievals
