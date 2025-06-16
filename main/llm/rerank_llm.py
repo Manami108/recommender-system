@@ -21,7 +21,7 @@ TOK_HEAD   = 6144  # max context tokens (after tokenization)
 # https://www.promptingguide.ai/jp/techniques/cot
 # https://www.llama.com/docs/model-cards-and-prompt-formats/llama3_1/
 # https://medium.com/@tahirbalarabe2/prompt-engineering-with-llama-3-3-032daa5999f7
-
+# https://www.kaggle.com/code/manojsrivatsav/prompt-engineering-with-llama-3-1-8b
 
 _PROMPT_PATH = Path(__file__).parent / "prompts" / "cars2.prompt"
 

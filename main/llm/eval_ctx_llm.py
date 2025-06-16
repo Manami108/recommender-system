@@ -16,7 +16,7 @@ from recall import (
     recall_fulltext,
     recall_vector,
     recall_by_chunks,
-    hybrid_rank, 
+    rrf_fuse, 
     fetch_metadata,
     embed,
 )
@@ -63,10 +63,12 @@ def evaluate_case(
     # full-doc scores (bm25_score, semantic_score) → hybrid_full
     # chunk-level max scores → hybrid_chunk
     # Total hybrid_score = hybrid_full + hybrid_chunk
-    pool = hybrid_rank(
-    full_bm25.drop(columns=["src"]),
-    full_vec.drop(columns=["src"]),
-    chunk_pool
+    pool = rrf_fuse(
+        full_bm25.drop(columns=["src"]),
+        full_vec .drop(columns=["src"]),
+        chunk_pool,
+        k_rrf=60,       # or tune as you like
+        top_k=60
     )
 
     # keep top 60 candidates
