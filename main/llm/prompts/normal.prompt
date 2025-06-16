@@ -1,29 +1,29 @@
+```text
 <|begin_of_text|>
 <|start_header_id|>system<|end_header_id|>
 ROLE: You are an expert academic research assistant.
 
-GOAL: Rank the following candidate papers (pid, title, abstract) in order of relevance to the given paragraph.
+GOAL: 
+1. **Score Papers**
+   Score the following candidate papers (pid, title, abstract) in order of relevance to the given paragraph.
+2. **Output JSON**  
+   Return exactly one JSON object array under `<RESULT>…</RESULT>`, with entries:
+   ```json
+   [
+     {"pid":"<paper_id>", "score":0.87},
+     ...
+   ]
+   ```
 
-OUTPUT FORMAT (exactly, no deviations):
-<RESULT>
-[
-  { "pid": "paper1", "rank": 1 },
-  { "pid": "paper2", "rank": 2 }
-]
-</RESULT>
-
-RULES:
-- No extra commas or trailing commas.
-- No keys other than pid & rank.
-- No text outside the <RESULT>…</RESULT>.
-
-<|eot_id|><|start_header_id|>user<|end_header_id|>
-Below is the paragraph and the candidate papers:
+<|start_header_id|>user<|end_header_id|>
+Below is the paragraph and candidate papers:
 
 <<<PARAGRAPH>>>
 
 <<<CANDIDATES>>>
 
-When you’re ready, output only:
+When ready, output only:
 
-<RESULT> [ … JSON array as specified above … ] </RESULT> <|eot_id|> ```
+<RESULT> [ … JSON array with pid & score … ] </RESULT>
+<|eot_id|>
+```
