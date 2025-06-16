@@ -16,7 +16,7 @@ from recall import (
     recall_fulltext,
     recall_vector,
     recall_by_chunks,
-    hybrid_rank, 
+    rrf_fuse, 
     fetch_metadata,
     embed,
 )
@@ -63,10 +63,23 @@ def evaluate_case(
     # full-doc scores (bm25_score, semantic_score) → hybrid_full
     # chunk-level max scores → hybrid_chunk
     # Total hybrid_score = hybrid_full + hybrid_chunk
-    pool = hybrid_rank(
-    full_bm25.drop(columns=["src"]),
-    full_vec.drop(columns=["src"]),
-    chunk_pool
+    # strip out any extraneous columns so rrf_fuse sees just pid & rank
+    # strip everything except pid & rank on the two full-doc tables
+    for df in (full_bm25, full_vec):
+        df.drop(columns=[c for c in df.columns if c not in ("pid","rank")],
+                inplace=True)
+
+    # now chunk_pool still has pid, rank, source, bm25_score, semantic_score
+    # next drop source on the full-docs only:
+    clean_full_bm25 = full_bm25.drop(columns=["source"], errors="ignore")
+    clean_full_vec  = full_vec .drop(columns=["source"], errors="ignore")
+
+    pool = rrf_fuse(
+        clean_full_bm25,
+        clean_full_vec,
+        chunk_pool,      # still contains .source + .rank
+        k_rrf=60,
+        top_k=60
     )
 
     # keep top 60 candidates
