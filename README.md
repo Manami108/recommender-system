@@ -5,6 +5,7 @@ https://www.overleaf.com/project/68317ee77bc2d9cfe0cf412e
 https://docs.google.com/document/d/1w6oR8HBcd2USkIyLxnu0ILzq_3Q6FVjpHXXyZW3aknA/edit?hl=JA&tab=t.0
 
 ## Experimental Protocol
+https://docs.google.com/document/d/10WN7Q7yhme27JXIMy7q-j8Hbx9Amyt1D6Aol2LYlTvo/edit?tab=t.0
 
 ## Approach
 1) Sliding window chunking based on token
