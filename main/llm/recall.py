@@ -205,7 +205,29 @@ def fetch_metadata(pids: List[str]) -> pd.DataFrame:
         rows = sess.run(cypher, ids=pids).data()
     return pd.DataFrame(rows)
 
-# ──────────────────────────── COSINE SIM UTILITY ─────────────────────────── #
+def rrf_scores(df: pd.DataFrame, k_rrf: int = 60, rank_col: str = "rank"):
+    # 1 / (k + rank)
+    df = df.copy()
+    df["rrf"] = 1.0 / (k_rrf + df[rank_col])
+    return df[["pid", "rrf"]]
+
+def rrf_fuse(
+    full_bm25, full_vec, chunk_pool, k_rrf=60, top_k=60
+):
+    # prepare per‐source RRF tables
+    sources = [
+        rrf_scores(full_bm25, k_rrf, "rank"),
+        rrf_scores(full_vec,   k_rrf, "rank"),
+    ]
+    # for chunks, chunk_pool already has source and rank; split and transform
+    for source in ("chunk_bm25", "chunk_vec"):
+        df_src = chunk_pool[chunk_pool.source == source]
+        sources.append(rrf_scores(df_src, k_rrf, "rank"))
+    
+    # stack and sum
+    all_rrf = pd.concat(sources, ignore_index=True)
+    fused = all_rrf.groupby("pid", as_index=False)["rrf"].sum()
+    return fused.sort_values("rrf", ascending=False).head(top_k)
 
 __all__ = [
     'embed',
