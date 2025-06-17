@@ -5,7 +5,7 @@ ROLE: You are an expert academic research assistant.
 
 GOAL: 
 1. **Score Papers**
-   Score the following candidate papers (pid, title, abstract) in order of relevance to the given paragraph.
+   Score candidate papers (pid, title, abstract) in order of relevance to the given paragraph.
 2. **Output JSON**  
    Return exactly one JSON object array under `<RESULT>…</RESULT>`, with entries:
    ```json
