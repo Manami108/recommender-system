@@ -18,7 +18,7 @@ GOAL:
    [
      {"pid":"<paper_id>", "score":0.87},
      ...
-   ]
+    ]
    ```
 
 <|start_header_id|>user<|end_header_id|>
