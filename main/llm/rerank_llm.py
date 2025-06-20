@@ -4,18 +4,18 @@ from __future__ import annotations
 import json, logging, os, re, sys
 from pathlib import Path
 from typing import List
-
+import torch
 import pandas as pd
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 
 # config
-_MODEL_ID  = os.getenv("LLAMA_MODEL",  "meta-llama/Meta-Llama-3-8B-Instruct")
+_MODEL_ID  = os.getenv("LLAMA_MODEL",  "meta-llama/Meta-Llama-3.1-8B-Instruct")
 _DEVICE    = os.getenv("LLAMA_DEVICE", "auto")
-MAX_GEN    = 8192 # max tokens to generate per prompt
-MAX_ABS_CH = 750  # max characters of abstract to include
-BATCH_SIZE = 3 # how many candidates per LLM call
+MAX_GEN    = 5000 # max tokens to generate per prompt
+MAX_ABS_CH = 750  # max characters of abstract to include, but I am not using it 
+BATCH_SIZE = 1 # how many candidates per LLM call
 MAX_POOL   = 60  # cap on total candidates before batching
-TOK_HEAD   = 6144  # max context tokens (after tokenization)
+TOK_HEAD   = 18000  # max context tokens (after tokenization)
 
 # path to prompt
 # https://www.promptingguide.ai/jp/techniques/cot
@@ -23,13 +23,13 @@ TOK_HEAD   = 6144  # max context tokens (after tokenization)
 # https://medium.com/@tahirbalarabe2/prompt-engineering-with-llama-3-3-032daa5999f7
 # https://www.kaggle.com/code/manojsrivatsav/prompt-engineering-with-llama-3-1-8b
 
-_PROMPT_PATH = Path(__file__).parent / "prompts" / "cars_few.prompt"
+_PROMPT_PATH = Path(__file__).parent / "prompts" / "cars_zero3.prompt"
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 # LLM model 
 _tok = AutoTokenizer.from_pretrained(_MODEL_ID, use_default_system_prompt=False)
-_mdl = AutoModelForCausalLM.from_pretrained(_MODEL_ID, device_map=_DEVICE, torch_dtype="auto")
+_mdl = AutoModelForCausalLM.from_pretrained(_MODEL_ID, device_map=_DEVICE, torch_dtype=torch.float16)
 _gen = pipeline(
     "text-generation",
     model=_mdl,
@@ -84,8 +84,9 @@ def rerank_batch(
             return t if len(t) <= MAX_ABS_CH else t[:MAX_ABS_CH] + " …"
         
         # Concatenates each candidate’s ID, title, and a truncated abstract (so you don’t blow past the token limit).
+        # Now, I am not truncating anymore
         cand_block = "\n\n".join(
-            f"PID: {r.pid}\nTitle: {r.title}\nAbstract: {trunc(r.abstract)}"
+            f"PID: {r.pid}\nTitle: {r.title}\nAbstract: {r.abstract}"
             for _, r in part.iterrows()
         )
 
@@ -111,17 +112,33 @@ def rerank_batch(
             raise RerankError(f"No JSON object found in LLM output:\n{raw[:300]}")
         json_text = m.group(1)
 
+        # Remove any stray trailing commas before ] or }
+        tidy = re.sub(r",\s*(?=[\]\}])", "", json_text)
+        # Ensure we only parse the [ … ] block
+        arr_match = re.search(r"\[.*\]", tidy, flags=re.DOTALL)
+        if not arr_match:
+            raise RerankError(f"Couldn’t locate JSON array in:\n{json_text}")
+        tidy = arr_match.group(0)
+
+
         # Fix pid quoting
         json_text = re.sub(r'"pid"\s*:\s*([0-9]+)', r'"pid":"\1"', json_text)
 
         # Parse
         try:
-            rec = json.loads(json_text)
+            rec = json.loads(tidy)
         except Exception as e:
-            raise RerankError(f"JSON parse failed: {e}\nSnippet:\n{json_text[:200]}")
+            raise RerankError(f"JSON parse failed: {e}\nSnippet:\n{tidy[:200]}")
+        
+        if not isinstance(rec, list):
+            raise RerankError(f"Expected JSON array, got: {type(rec).__name__}")
+        for entry in rec:
+            if not isinstance(entry, dict) or "pid" not in entry or "score" not in entry:
+                raise RerankError(f"Invalid entry in array: {entry!r}")
 
         df = pd.DataFrame(rec)
-        df.columns = [c.lower() for c in df.columns]
+        df.columns = [str(c).lower() for c in df.columns]
+
         if "pid" not in df or "score" not in df:
             raise RerankError(f"Expected 'pid' and 'score' fields, got {df.columns.tolist()}")
         df["pid"] = df["pid"].astype(str)
