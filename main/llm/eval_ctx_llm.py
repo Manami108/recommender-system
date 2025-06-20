@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import List, Optional
 from neo4j import GraphDatabase, READ_ACCESS
 from transformers import AutoTokenizer
-
+import torch
 from chunking import clean_text, chunk_tokens
 from recall import (
     recall_fulltext,
@@ -21,6 +21,8 @@ from recall import (
     embed,
 )
 from rerank_llm import rerank_batch, RerankError  # returns DataFrame with pid, score
+
+
 
 # config
 TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020_references.jsonl"))
@@ -36,7 +38,7 @@ _NEO4J_PASS = os.getenv("NEO4J_PASS", "secret")
 _driver     = GraphDatabase.driver(_NEO4J_URI, auth=(_NEO4J_USER, _NEO4J_PASS))
 
 # Tokenizer for chunking
-TOKENIZER  = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3-8B-Instruct", use_fast=True)
+TOKENIZER  = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct", use_fast=True)
 
 # helpers
 def cosine_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:

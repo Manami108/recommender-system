@@ -25,7 +25,7 @@ Here are some examples of how to perform this task.
 ### EXAMPLE 1
 
 <<<PARAGRAPH>>>
-Recent advancements in generative adversarial networks (GANs) have led to remarkable progress in the synthesis of photorealistic images. Seminal works by Karras et al. (2019) and Brock et al. (2018) established new benchmarks for image quality, and the field has since seen widespread application in areas from media production to data augmentation. The dominant paradigm in these models involves training on massive, static datasets, which has proven highly effective for generating images within the learned distribution.
+Recent advancements in generative adversarial networks (GANs) have led to remarkable progress in the synthesis of photorealistic images. Seminal works established new benchmarks for image quality, and the field has since seen widespread application in areas from media production to data augmentation. The dominant paradigm in these models involves training on massive, static datasets, which has proven highly effective for generating images within the learned distribution.
 <<<CANDIDATES>>>
 [
   {"pid": "10.1109/tpami.2019.2947684", "title": "A Style-Based Generator Architecture for Generative Adversarial Networks"},
@@ -37,8 +37,8 @@ Recent advancements in generative adversarial networks (GANs) have led to remark
 1.  **C.A.R.S. Move Alignment**: The paragraph reviews the current state of a field (GANs for image synthesis), cites prominent existing work, and establishes its importance. This is a clear instance of **Move 1: Establishing a Territory**, specifically **Step 1: Claiming centrality** and **Step 2: Making topic generalizations**.
 2.  **Internal Topic & Intent**: The paragraph's topic is the current state of generative adversarial networks (GANs) for image synthesis. The intent is to provide a high-level summary of the established, successful methods in the field, setting the stage for a subsequent argument.
 3.  **Retrieve & Score Papers**:
-    * `10.1109/tpami.2019.2947684`: This is the Karras et al. (2019) paper cited in the text. It's a foundational paper that defines the territory. Perfect alignment. **Score: 1.0**.
-    * `10.48550/arxiv.1812.04948`: This is the Brock et al. (2018) paper cited in the text. It's another foundational paper establishing the territory. Perfect alignment. **Score: 1.0**.
+    * `10.1109/tpami.2019.2947684`: It's a foundational paper that defines the territory. Perfect alignment. **Score: 1.0**.
+    * `10.48550/arxiv.1812.04948`: It's another foundational paper establishing the territory. Perfect alignment. **Score: 1.0**.
     * `10.1145/3306346.3322964`: This paper is on a completely unrelated topic (fossil identification) and has no relevance to the paragraph's topic or rhetorical move. **Score: 0.0**.
 
 ### Expected Output for Example 1:
