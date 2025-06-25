@@ -12,7 +12,8 @@ from transformers import BitsAndBytesConfig
 # config
 _MODEL_ID  = os.getenv("LLAMA_MODEL",  "meta-llama/Meta-Llama-3.1-8B-Instruct")
 _DEVICE    = os.getenv("LLAMA_DEVICE", "auto")
-MAX_GEN    = 256 # max tokens to generate per prompt
+# When its normal zeroshot chain of thought, it is gonna be 256, or 320
+MAX_GEN    = 320   # max tokens to generate per prompt
 MAX_ABS_CH = 750  # max characters of abstract to include, but I am not using it 
 BATCH_SIZE = 3 # how many candidates per LLM call
 MAX_POOL   = 60  # cap on total candidates before batching
@@ -24,7 +25,7 @@ TOK_HEAD = 8192 - MAX_GEN   # max context tokens (after tokenization)
 # https://medium.com/@tahirbalarabe2/prompt-engineering-with-llama-3-3-032daa5999f7
 # https://www.kaggle.com/code/manojsrivatsav/prompt-engineering-with-llama-3-1-8b
 
-_PROMPT_PATH = Path(__file__).parent / "prompts" / "cot_zero.prompt"
+_PROMPT_PATH = Path(__file__).parent / "prompts" / "working2.prompt"
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -134,11 +135,18 @@ def rerank_batch(
         raw_out = _gen(prompt)[0]["generated_text"]   # uses global MAX_GEN
 
 
-        
+
         raw = re.sub(r"<\|(?:eot_id|eom_id)\|>.*$", "", raw_out, flags=re.DOTALL).strip()
         # print("prompt tokens:", len(_tok(prompt).input_ids))
         # print("max_new_tokens:", max_gen_this_call)
-        print(raw_out)   # full, or at least first 800 chars
+        # print(raw_out)   # full, or at least first 800 chars
+        # print("[checkpoint] after prompt")      # already prints prompt
+        # torch.cuda.synchronize()
+        # print("[checkpoint] before generate")
+        # raw_out = _gen(prompt)[0]["generated_text"]
+        # print("[checkpoint] after generate")    # you will never see this if crash is here
+        # torch.cuda.synchronize()
+
 
         # Extract JSON object containing pid + score
         m = _JSON_RE.search(raw)
