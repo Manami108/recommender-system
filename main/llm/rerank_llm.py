@@ -7,15 +7,16 @@ from typing import List
 import torch
 import pandas as pd
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+from transformers import BitsAndBytesConfig
 
 # config
 _MODEL_ID  = os.getenv("LLAMA_MODEL",  "meta-llama/Meta-Llama-3.1-8B-Instruct")
 _DEVICE    = os.getenv("LLAMA_DEVICE", "auto")
-MAX_GEN    = 5000 # max tokens to generate per prompt
+MAX_GEN    = 256 # max tokens to generate per prompt
 MAX_ABS_CH = 750  # max characters of abstract to include, but I am not using it 
-BATCH_SIZE = 1 # how many candidates per LLM call
+BATCH_SIZE = 3 # how many candidates per LLM call
 MAX_POOL   = 60  # cap on total candidates before batching
-TOK_HEAD   = 18000  # max context tokens (after tokenization)
+TOK_HEAD = 8192 - MAX_GEN   # max context tokens (after tokenization)
 
 # path to prompt
 # https://www.promptingguide.ai/jp/techniques/cot
@@ -27,9 +28,22 @@ _PROMPT_PATH = Path(__file__).parent / "prompts" / "cars_zero3.prompt"
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
+# QLoRa
+# https://reinforz.co.jp/bizmedia/13036/
+bnb_cfg = BitsAndBytesConfig(
+    load_in_4bit=True,             
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_use_double_quant=True,
+)
+
 # LLM model 
 _tok = AutoTokenizer.from_pretrained(_MODEL_ID, use_default_system_prompt=False)
-_mdl = AutoModelForCausalLM.from_pretrained(_MODEL_ID, device_map=_DEVICE, torch_dtype=torch.float16)
+_mdl = AutoModelForCausalLM.from_pretrained(
+    _MODEL_ID,
+    device_map="auto",             
+    quantization_config=bnb_cfg,  # Using QLoRa for making system lightweight
+    trust_remote_code=True          # avoids class-mismatch errors
+)
 _gen = pipeline(
     "text-generation",
     model=_mdl,
@@ -50,6 +64,7 @@ _JSON_RE = re.compile(
     r"(?:<\|?/?RESULT\|?>)?\s*(\[[\s\S]*?\])\s*(?:<\|?/?RESULT\|?>)?",
     re.MULTILINE,
 )
+print(_mdl.config.max_position_embeddings)      # 8192? 131072?
 
 # this is for any reranking specific failures
 class RerankError(RuntimeError):
@@ -102,15 +117,34 @@ def rerank_batch(
         if len(_tok(prompt).input_ids) > TOK_HEAD:
             raise RerankError("Prompt too long; reduce batch size or truncate abstracts")
 
-        # Generate
-        raw_out = _gen(prompt)[0]["generated_text"]
+        # adjust token size 
+        tokens_per_item = 12          
+        max_gen_this_call = tokens_per_item * len(part) + 32
+
+        raw_out = _gen(
+            prompt,
+            max_new_tokens=max_gen_this_call,
+            do_sample=False,
+            pad_token_id=_tok.eos_token_id,
+            return_full_text=False,
+        )[0]["generated_text"]
+        # print("----- LLM RAW -----\n", raw_out[:400], "\n-------------------")
         raw = re.sub(r"<\|(?:eot_id|eom_id)\|>.*$", "", raw_out, flags=re.DOTALL).strip()
+        # print("prompt tokens:", len(_tok(prompt).input_ids))
+        # print("max_new_tokens:", max_gen_this_call)
+        print(raw_out)   # full, or at least first 800 chars
 
         # Extract JSON object containing pid + score
         m = _JSON_RE.search(raw)
-        if not m:
-            raise RerankError(f"No JSON object found in LLM output:\n{raw[:300]}")
-        json_text = m.group(1)
+        if m:
+            json_text = m.group(1)                   
+        else:
+            # fallback: collect every standalone {...} object
+            objs = re.findall(r'\{[^{}]+\}', raw)
+            if not objs:
+                raise RerankError(
+                    f"No JSON object found in LLM output (first 300 chars):\n{raw[:300]}")
+            json_text = "[" + ",".join(objs) + "]"    # wrap → valid JSON array
 
         # Remove any stray trailing commas before ] or }
         tidy = re.sub(r",\s*(?=[\]\}])", "", json_text)
