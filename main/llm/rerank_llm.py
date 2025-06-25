@@ -24,7 +24,7 @@ TOK_HEAD = 8192 - MAX_GEN   # max context tokens (after tokenization)
 # https://medium.com/@tahirbalarabe2/prompt-engineering-with-llama-3-3-032daa5999f7
 # https://www.kaggle.com/code/manojsrivatsav/prompt-engineering-with-llama-3-1-8b
 
-_PROMPT_PATH = Path(__file__).parent / "prompts" / "cars_zero3.prompt"
+_PROMPT_PATH = Path(__file__).parent / "prompts" / "cot_zero.prompt"
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -116,19 +116,25 @@ def rerank_batch(
         # Ensure context length
         if len(_tok(prompt).input_ids) > TOK_HEAD:
             raise RerankError("Prompt too long; reduce batch size or truncate abstracts")
-
+        
+        # This is activated when you do normal zeroshot learning 
         # adjust token size 
-        tokens_per_item = 12          
-        max_gen_this_call = tokens_per_item * len(part) + 32
-
-        raw_out = _gen(
-            prompt,
-            max_new_tokens=max_gen_this_call,
-            do_sample=False,
-            pad_token_id=_tok.eos_token_id,
-            return_full_text=False,
-        )[0]["generated_text"]
+        # tokens_per_item = 12          
+        # max_gen_this_call = tokens_per_item * len(part) + 32
+        # raw_out = _gen(
+        #     prompt,
+        #     max_new_tokens=max_gen_this_call,
+        #     do_sample=False,
+        #     pad_token_id=_tok.eos_token_id,
+        #     return_full_text=False,
+        # )[0]["generated_text"]
         # print("----- LLM RAW -----\n", raw_out[:400], "\n-------------------")
+
+        # This is activated when you do chain of thought prompting 
+        raw_out = _gen(prompt)[0]["generated_text"]   # uses global MAX_GEN
+
+
+        
         raw = re.sub(r"<\|(?:eot_id|eom_id)\|>.*$", "", raw_out, flags=re.DOTALL).strip()
         # print("prompt tokens:", len(_tok(prompt).input_ids))
         # print("max_new_tokens:", max_gen_this_call)
@@ -193,16 +199,16 @@ def rerank_batch(
     )
     return merged
 
-if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print("Usage: python llama_rerank.py paragraph.txt candidates.tsv")
-        sys.exit(1)
+# if __name__ == "__main__":
+#     if len(sys.argv) != 3:
+#         print("Usage: python llama_rerank.py paragraph.txt candidates.tsv")
+#         sys.exit(1)
 
-    paragraph = Path(sys.argv[1]).read_text(encoding="utf-8")
-    cand_df   = pd.read_csv(sys.argv[2], sep="\t", names=["pid","title","abstract"])
+#     paragraph = Path(sys.argv[1]).read_text(encoding="utf-8")
+#     cand_df   = pd.read_csv(sys.argv[2], sep="\t", names=["pid","title","abstract"])
 
-    try:
-        top = rerank_batch(paragraph, cand_df, k=10)
-        print(top[["pid","score"]])
-    except RerankError as err:
-        logging.error("Rerank failed: %s", err)
+#     try:
+#         top = rerank_batch(paragraph, cand_df, k=10)
+#         print(top[["pid","score"]])
+#     except RerankError as err:
+#         logging.error("Rerank failed: %s", err)
