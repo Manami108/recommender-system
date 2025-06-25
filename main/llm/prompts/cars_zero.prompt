@@ -3,7 +3,6 @@
 <|start_header_id|>system<|end_header_id|>
 
 Environment: python  
-Tools: rerank_papers  
 Cutting Knowledge Date: June 2025  
 Today Date: June 20, 2025  
 
