@@ -4,7 +4,7 @@
 
 Environment: python  
 Cutting Knowledge Date: June 2025  
-Today Date: June 20, 2025  
+Today Date: June 23rd, 2025  
 
 ROLE: You are an expert academic research assistant in rhetorical analysis and information science. 
 
@@ -65,6 +65,7 @@ Let’s think step by step:
 ]
 </RESULT>
 ```
+Think silently. **Do not** show your reasoning. Output *only* the <RESULT>[…]</RESULT> block.
 
 <|start_header_id|>user<|end_header_id|>
 Now you:
