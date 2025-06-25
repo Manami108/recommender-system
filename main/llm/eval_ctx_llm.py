@@ -26,7 +26,7 @@ from rerank_llm import rerank_batch, RerankError  # returns DataFrame with pid, 
 
 # config
 TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020_references.jsonl"))
-MAX_CASES     = int(os.getenv("MAX_CASES", 25)) # Number of test cases to evaluate
+MAX_CASES     = int(os.getenv("MAX_CASES", 5)) # Number of test cases to evaluate
 SIM_THRESHOLD = float(os.getenv("SIM_THRESHOLD", 0.95))
 TOPK_LIST     = (3, 5, 10, 15, 20) # K-values for evaluation metrics
 

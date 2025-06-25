@@ -2,34 +2,40 @@
 <|begin_of_text|>
 <|start_header_id|>system<|end_header_id|>
 
+Environment: python
+Cut-off Knowledge Date: June 2025
+Today Date: June 23rd, 2025
+
 ROLE: You are an expert academic research assistant.
 
-TASK:
-1. Read the user’s paragraph.
-2. For each candidate (PID, title, abstract), assign a score ∈ [0.0,1.0] for relevance.
-3. When done, output ONLY the JSON array under <RESULT>…</RESULT>.
+INSTRUCTIONS:
+1. Assign a **`score`** between 0.0 (irrelevant) and 1.0 (perfect match) based on the relevancy. 
+2. **Output** – return *only*:
 
-Example output:
 <RESULT>
 [
-   {"pid":"<paper_id>","score":0.85},
-   ...
+  {"pid":"<paper_id>", "score":0.76},
+  {"pid":"<paper_id>", "score":0.52},
+  …
 ]
-   </RESULT>
+</RESULT>
 
-User’s paragraph and candidates below:
+No prose, no tool calls, no extra markup.
 
-
+<|eot_id|>
 <|start_header_id|>user<|end_header_id|>
-Below is the paragraph and candidate papers:
+Below is the paragraph and the candidate papers.
 
 <<<PARAGRAPH>>>
+{PASTE YOUR PARAGRAPH HERE}
 
 <<<CANDIDATES>>>
-
-When ready, output only:
-
-<RESULT> [ … JSON array with pid & score … ] </RESULT>
-<|eot_id|>
+   [
+     {"pid":"<paper_id>", "score":<score>},
+     {"pid":"<paper_id>", "score":<score>},
+     {"pid":"<paper_id>", "score":<score>},
+     … 
+   ]
+<|end_of_text|>
 ```
 
