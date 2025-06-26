@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import List, Optional
 from neo4j import GraphDatabase, READ_ACCESS
 from transformers import AutoTokenizer
-import torch
 from chunking import clean_text, chunk_tokens
 from recall import (
     recall_fulltext,
@@ -21,7 +20,7 @@ from recall import (
     embed,
 )
 from rerank_llm import rerank_batch, RerankError  # returns DataFrame with pid, score
-
+import matplotlib.pyplot as plt         
 
 
 # config
@@ -139,6 +138,7 @@ def evaluate_case(
         else:
             hits.append(False)
 
+    # https://www.evidentlyai.com/ranking-metrics/evaluating-recommender-systems    
     # P@k  = # relevant hits in top-k / k
     # HR@k = # whether at least one hit in top-k
     # R@k  = # hits / total ground-truth
@@ -171,8 +171,22 @@ def main() -> None:
                 rec.get("year")
             )
         )
+    metric_df = pd.DataFrame(metrics)
+    ks = np.array(TOPK_LIST)
+
+    for prefix in ["P", "HR", "R", "NDCG"]:
+        y = metric_df[[f"{prefix}@{k}" for k in ks]].mean().values
+        plt.figure()
+        plt.plot(ks, y, marker="o")
+        plt.title(f"{prefix}@k vs k  (averaged over {len(metric_df)} paragraphs)")
+        plt.xlabel("k: # of recommended papers")
+        plt.ylabel(prefix)
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
     avg = pd.DataFrame(metrics).mean(numeric_only=True)
     print("\nEvaluation with RRF + LLM scoring - avg metrics:\n", avg.round(4))
+
 
 if __name__ == "__main__":
     main()

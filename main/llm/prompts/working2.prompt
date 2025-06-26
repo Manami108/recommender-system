@@ -28,19 +28,19 @@ Let’s think step by step:
 2. Topic: Fashion image classification using CNNs 
    Intent: To improve classification robustness and accuracy in real-world fashion images using advanced deep learning methods.
 3. 
-| pid    | Match Analysis                                                                                                        | Score   |
-| ------ | --------------------------------------------------------------------------------------------------------------------- | ------- |
-| **F1** | Strong alignment with both **domain (fashion)** and **method (CNN)**, directly addresses robustness in classification | **1.0** |
-| **F2** | Related to fashion, but focuses on **search/retrieval**, not classification                                           | **0.6** |
-| **F3** | Irrelevant domain (autonomous driving), unrelated task                                                                | **0.0** |
+| pid    | Match Analysis                                                                                                        | Score    |
+| ------ | --------------------------------------------------------------------------------------------------------------------- | -------- |
+| **F1** | Strong alignment with both **domain (fashion)** and **method (CNN)**, directly addresses robustness in classification | **1.00** |
+| **F2** | Related to fashion, but focuses on **search/retrieval**, not classification                                           | **0.62** |
+| **F3** | Irrelevant domain (autonomous driving), unrelated task                                                                | **0.00** |
 
 4. 
  ```json
 <RESULT>
 [
-  {"pid": "F1", "score": 1.0},
+  {"pid": "F1", "score": 1.00},
   {"pid": "F2", "score": 0.62},
-  {"pid": "F3", "score": 0.0}
+  {"pid": "F3", "score": 0.00}
 ]
 </RESULT>
  ```
@@ -64,19 +64,19 @@ Let’s think step by step:
    Move 3: “This paper investigates the role of knowledge graphs in supporting…” → Introduces the paper’s contribution in filling the niche.
 2. Topic: Use of knowledge graphs in explainable, data-driven decision making Intent: To explore how knowledge graphs and GNNs enhance reasoning, transparency, and context-aware decisions.
 3. 
-| pid    | Match Analysis                                                                                | Score   |
-| ------ | --------------------------------------------------------------------------------------------- | ------- |
-| **K1** | Perfect alignment: uses **KGs for decision support** in a real-world domain                   | **1.0** |
-| **K2** | GNNs used, but not focused on decision making or explainability                               | **0.4** |
-| **K3** | High conceptual alignment with **explainability** and **reasoning**, but less emphasis on KGs | **0.7** |
+| pid    | Match Analysis                                                                                | Score    |
+| ------ | --------------------------------------------------------------------------------------------- | -------- |
+| **K1** | Perfect alignment: uses **KGs for decision support** in a real-world domain                   | **1.00** |
+| **K2** | GNNs used, but not focused on decision making or explainability                               | **0.40** |
+| **K3** | High conceptual alignment with **explainability** and **reasoning**, but less emphasis on KGs | **0.70** |
 
 4. 
 ```json
 <RESULT>
 [
-  {"pid": "K1", "score": 1.0},
-  {"pid": "K3", "score": 0.7},
-  {"pid": "K2", "score": 0.4}
+  {"pid": "K1", "score": 1.00},
+  {"pid": "K3", "score": 0.70},
+  {"pid": "K2", "score": 0.40}
 ]
 </RESULT>
 ```
