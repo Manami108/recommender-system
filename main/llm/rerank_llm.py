@@ -11,31 +11,26 @@ from transformers import BitsAndBytesConfig
 
 # config
 _MODEL_ID  = os.getenv("LLAMA_MODEL",  "meta-llama/Meta-Llama-3.1-8B-Instruct")
-_DEVICE    = os.getenv("LLAMA_DEVICE", "auto")
-# When its normal zeroshot chain of thought, it is gonna be 256, or 320
-MAX_GEN    = 1000   # max tokens to generate per prompt
-MAX_ABS_CH = 750  # max characters of abstract to include, but I am not using it 
-BATCH_SIZE = 3 # how many candidates per LLM call
-MAX_POOL   = 60  # cap on total candidates before batching
-TOK_HEAD = 10000 - MAX_GEN   # max context tokens (after tokenization)
+
 
 # path to prompt
 # https://www.promptingguide.ai/jp/techniques/cot
 # https://www.llama.com/docs/model-cards-and-prompt-formats/llama3_1/
 # https://medium.com/@tahirbalarabe2/prompt-engineering-with-llama-3-3-032daa5999f7
 # https://www.kaggle.com/code/manojsrivatsav/prompt-engineering-with-llama-3-1-8b
-
 _PROMPT_PATH = Path(__file__).parent / "prompts" / "working2.prompt"
+_PROMPT_TMPL = _PROMPT_PATH.read_text(encoding="utf-8")
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 # QLoRa
 # https://reinforz.co.jp/bizmedia/13036/
+# https://zenn.dev/timoneko/books/8a9cab9c5caded/viewer/330bf9
 bnb_cfg = BitsAndBytesConfig(
-    load_in_4bit=True,             
-    bnb_4bit_quant_type="nf4",
-    bnb_4bit_use_double_quant=True,
-    bnb_4bit_compute_dtype=torch.bfloat16,
+    load_in_4bit=True,  # 4bit 量子化を有効化。            
+    bnb_4bit_quant_type="nf4", # 量子化データタイプ
+    bnb_4bit_use_double_quant=True, # Nested quantization)を有効化
+    bnb_4bit_compute_dtype=torch.bfloat16, # 量子化計算時のデータタイプを設定します。
 )
 
 # LLM model 
@@ -46,6 +41,15 @@ _mdl = AutoModelForCausalLM.from_pretrained(
     quantization_config=bnb_cfg,  # Using QLoRa for making system lightweight
     trust_remote_code=True          # avoids class-mismatch errors
 )
+
+# When its normal zeroshot chain of thought, it is gonna be 256, or 320
+MAX_GEN    = 1300   # max tokens to generate per prompt
+MAX_ABS_CH = 750  # max characters of abstract to include, but I am not using it 
+BATCH_SIZE = 3 # how many candidates per LLM call
+MAX_POOL   = 60  # cap on total candidates before batching
+CTX = _mdl.config.max_position_embeddings # THis refers max of this model's token size
+TOK_HEAD = CTX - MAX_GEN   # max context tokens (after tokenization)
+
 _gen = pipeline(
     "text-generation",
     model=_mdl,
@@ -58,15 +62,12 @@ _gen = pipeline(
     return_full_text=False,
 )
 
-# load prompt once
-_PROMPT_TMPL = _PROMPT_PATH.read_text(encoding="utf-8")
-
 # accept both <RESULT>…</RESULT> and <|RESULT|>…<|/RESULT|>
 _JSON_RE = re.compile(
     r"(?:<\|?/?RESULT\|?>)?\s*(\[[\s\S]*?\])\s*(?:<\|?/?RESULT\|?>)?",
     re.MULTILINE,
 )
-print(_mdl.config.max_position_embeddings)      # 8192? 131072?
+print(_mdl.config.max_position_embeddings)      
 
 # this is for any reranking specific failures
 class RerankError(RuntimeError):
