@@ -11,28 +11,36 @@ ROLE: You are an expert academic research assistant in rhetorical analysis and i
 Example 1:
 Q: Below is an introduction paragraph. Identify its C.A.R.S. move, infer topic & intent, then score each candidate paper (by pid) for fit. Show your work.
 Paragraph:
-“Machine learning systems have revolutionized many domains, yet they often provide opaque explanations. Recent work on explainable AI (XAI) seeks to open the black box. However, existing XAI methods rarely incorporate user context and goals, limiting practical adoption.”
+“In the rapidly evolving landscape of e-commerce and social media, image-based fashion recognition has become a cornerstone for personalized user experiences. Machine learning, particularly convolutional neural networks (CNNs), has shown exceptional performance in classifying and tagging fashion items from images. These systems enable automated product tagging, style detection, and recommendation, drastically improving both search accuracy and inventory management. However, challenges such as varying poses, lighting conditions, and occlusions still limit classification robustness. This study explores state-of-the-art deep learning architectures and augmentation strategies tailored for fashion image classification, aiming to improve both accuracy and generalizability in real-world applications.”
 
 Candidates:
 [
-  {"pid":"A1", "title":"User-Centered XAI: Contextual Explanations","abstract":"…"},
-  {"pid":"B2", "title":"Global Model Interpretability Techniques","abstract":"…"},
-  {"pid":"C3", "title":"Interactive Visualization for AI Models","abstract":"…"}
+  { "pid": "F1", "title": "Enhancing Fashion Image Classification with Multi-Scale CNNs", "abstract": "We present a novel architecture that improves classification of fashion items under real-world conditions using multi-scale convolutional networks and adversarial augmentation..." },
+  { "pid": "F2", "title": "Semantic Search in Fashion Retail", "abstract": "This paper introduces a semantic embedding method to allow customers to search for fashion items using natural language queries and visual similarity..." },
+  { "pid": "F3", "title": "Transfer Learning for Object Detection in Autonomous Vehicles", "abstract": "We study the application of transfer learning for object detection models in driving scenarios using real-time constraints..." }
 ]
 
-Let’s think step by step:
-1. This paragraph is Move 1→2 (Establish territory and niche): it names ML’s impact (territory) then XAI gap (niche).
-2. Internally, topic = explainable AI with user context; intent = show need for context-aware XAI.
-3. Read A1: focuses on contextual explanations → very good match (score ~0.9).
-4. Read B2: covers interpretability broadly, lacks user context → moderate match (score ~0.5).
-5. Read C3: deals with visualization tools, not XAI context → low match (score ~0.2).
 
+Let’s think step by step:
+1. Move 1 (Establishing territory): “In the rapidly evolving landscape of e-commerce and social media, image-based fashion recognition has become a cornerstone…” → Establishes importance and context.
+   Move 2 (Establishing a niche): “However, challenges such as varying poses, lighting conditions, and occlusions still limit classification robustness.” → Points out a gap in current systems.
+   Move 3 (Occupying the niche): “This study explores state-of-the-art deep learning architectures…” → Claims how the paper addresses the gap.
+2. Topic: Fashion image classification using CNNs 
+   Intent: To improve classification robustness and accuracy in real-world fashion images using advanced deep learning methods.
+3. 
+| pid    | Match Analysis                                                                                                        | Score   |
+| ------ | --------------------------------------------------------------------------------------------------------------------- | ------- |
+| **F1** | Strong alignment with both **domain (fashion)** and **method (CNN)**, directly addresses robustness in classification | **1.0** |
+| **F2** | Related to fashion, but focuses on **search/retrieval**, not classification                                           | **0.6** |
+| **F3** | Irrelevant domain (autonomous driving), unrelated task                                                                | **0.0** |
+
+4. 
  ```json
 <RESULT>
 [
-  {"pid":"A1","score":0.90},
-  {"pid":"B2","score":0.50},
-  {"pid":"C3","score":0.20}
+  {"pid": "F1", "score": 1.0},
+  {"pid": "F2", "score": 0.62},
+  {"pid": "F3", "score": 0.0}
 ]
 </RESULT>
  ```
@@ -40,31 +48,39 @@ Let’s think step by step:
 Example 2:
 Q: Now this paragraph…
 Paragraph:
-“Knowledge graphs (KGs) have become essential for representing structured information. Yet, linking KGs dynamically to narrative text remains challenging. We propose a pipeline that aligns paragraphs to KG subgraphs in real time.”
+“Effective decision making in complex domains—such as healthcare, finance, and scientific research—requires not just data, but structured, interpretable knowledge. Knowledge graphs (KGs) offer a powerful way to represent relationships between entities, enabling machine learning systems to reason over structured information rather than isolated data points. When combined with graph neural networks (GNNs) or logical reasoning models, KGs enhance the transparency and explainability of decisions by surfacing connections and patterns otherwise buried in unstructured data. This paper investigates the role of knowledge graphs in supporting data-driven and explainable decision-making systems, focusing on how integrating semantic relationships can guide more informed, context-aware machine learning outcomes.”
 
 Candidates:
 [
-  {"pid":"X1", "title":"Real-Time KG Alignment","abstract":"…"},
-  {"pid":"Y2", "title":"Static KG Embedding Methods","abstract":"…"},
-  {"pid":"Z3", "title":"Text-Graph Mapping Techniques","abstract":"…"}
+  { "pid": "K1", "title": "A Knowledge Graph Framework for Medical Decision Support", "abstract": "This work proposes a KG-based system for improving decision-making in clinical diagnosis through structured entity relationships and reasoning paths..." },
+  { "pid": "K2", "title": "Graph Neural Networks for Fake News Detection", "abstract": "We apply GNNs to social graphs for detecting misinformation, focusing on node classification and edge propagation dynamics..." },
+  { "pid": "K3", "title": "Interpretable AI with Symbolic and Neural Reasoning", "abstract": "Combining symbolic logic and neural networks, this study builds a hybrid reasoning model for transparent AI systems, applied to general decision domains..." }
 ]
 
-Let’s think step by step:
-1. Move 1→2: states KG importance (territory), then dynamic linking gap (niche).
-2. Topic = paragraph–KG alignment; intent = motivate real-time linking.
-3. X1: directly real-time alignment → score 0.92.
-4. Y2: static embeddings, no dynamic link → score 0.40.
-5. Z3: mapping text to graphs, could apply → score 0.75.
 
-<RESULT>
+Let’s think step by step:
+1. Move 1: “Effective decision making in complex domains... requires structured knowledge.” → Establishes importance of structured decision-making.
+   Move 2: “Knowledge graphs offer a powerful way…” and “KGs enhance the transparency…” → Identifies gap in using unstructured data, promotes KGs as a better alternative.
+   Move 3: “This paper investigates the role of knowledge graphs in supporting…” → Introduces the paper’s contribution in filling the niche.
+2. Topic: Use of knowledge graphs in explainable, data-driven decision making Intent: To explore how knowledge graphs and GNNs enhance reasoning, transparency, and context-aware decisions.
+3. 
+| pid    | Match Analysis                                                                                | Score   |
+| ------ | --------------------------------------------------------------------------------------------- | ------- |
+| **K1** | Perfect alignment: uses **KGs for decision support** in a real-world domain                   | **1.0** |
+| **K2** | GNNs used, but not focused on decision making or explainability                               | **0.4** |
+| **K3** | High conceptual alignment with **explainability** and **reasoning**, but less emphasis on KGs | **0.7** |
+
+4. 
 ```json
+<RESULT>
 [
-  {"pid":"X1","score":0.92},
-  {"pid":"Y2","score":0.40},
-  {"pid":"Z3","score":0.75}
+  {"pid": "K1", "score": 1.0},
+  {"pid": "K3", "score": 0.7},
+  {"pid": "K2", "score": 0.4}
 ]
 </RESULT>
 ```
+
 Think silently. **Do not** show your reasoning. Output *only* the <RESULT>[…]</RESULT> block.
 
 <|start_header_id|>user<|end_header_id|>

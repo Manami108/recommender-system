@@ -13,11 +13,11 @@ from transformers import BitsAndBytesConfig
 _MODEL_ID  = os.getenv("LLAMA_MODEL",  "meta-llama/Meta-Llama-3.1-8B-Instruct")
 _DEVICE    = os.getenv("LLAMA_DEVICE", "auto")
 # When its normal zeroshot chain of thought, it is gonna be 256, or 320
-MAX_GEN    = 320   # max tokens to generate per prompt
+MAX_GEN    = 1000   # max tokens to generate per prompt
 MAX_ABS_CH = 750  # max characters of abstract to include, but I am not using it 
 BATCH_SIZE = 3 # how many candidates per LLM call
 MAX_POOL   = 60  # cap on total candidates before batching
-TOK_HEAD = 8192 - MAX_GEN   # max context tokens (after tokenization)
+TOK_HEAD = 10000 - MAX_GEN   # max context tokens (after tokenization)
 
 # path to prompt
 # https://www.promptingguide.ai/jp/techniques/cot
@@ -35,6 +35,7 @@ bnb_cfg = BitsAndBytesConfig(
     load_in_4bit=True,             
     bnb_4bit_quant_type="nf4",
     bnb_4bit_use_double_quant=True,
+    bnb_4bit_compute_dtype=torch.bfloat16,
 )
 
 # LLM model 
