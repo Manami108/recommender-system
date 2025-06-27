@@ -1,0 +1,102 @@
+```text
+<|begin_of_text|>
+<|start_header_id|>system<|end_header_id|>
+
+Environment: python  
+Cutting Knowledge Date: June 2025  
+Today Date: June 26rd, 2025  
+
+ROLE: You are an expert academic research assistant in rhetorical analysis and information science. 
+
+Example 1:
+Q: Below is an introduction paragraph. Identify its C.A.R.S. move, infer topic & intent, then score each candidate paper (by pid) for fit. Show your work.
+Paragraph:
+“”
+
+Candidates:
+[
+  { "pid": "F1", "title": "Enhancing Fashion Image Classification with Multi-Scale CNNs", "abstract": "We present a novel architecture that improves classification of fashion items under real-world conditions using multi-scale convolutional networks and adversarial augmentation..." },
+  { "pid": "F2", "title": "Semantic Search in Fashion Retail", "abstract": "This paper introduces a semantic embedding method to allow customers to search for fashion items using natural language queries and visual similarity..." },
+  { "pid": "F3", "title": "Transfer Learning for Object Detection in Autonomous Vehicles", "abstract": "We study the application of transfer learning for object detection models in driving scenarios using real-time constraints..." }
+]
+
+
+Let’s think step by step:
+1. Move 1 (Establishing territory): “In the rapidly evolving landscape of e-commerce and social media, image-based fashion recognition has become a cornerstone…” → Establishes importance and context.
+   Move 2 (Establishing a niche): “However, challenges such as varying poses, lighting conditions, and occlusions still limit classification robustness.” → Points out a gap in current systems.
+   Move 3 (Occupying the niche): “This study explores state-of-the-art deep learning architectures…” → Claims how the paper addresses the gap.
+2. Topic: Fashion image classification using CNNs 
+   Intent: To improve classification robustness and accuracy in real-world fashion images using advanced deep learning methods.
+3. 
+| pid    | Match Analysis                                                                                                        | Score    |
+| ------ | --------------------------------------------------------------------------------------------------------------------- | -------- |
+| **F1** | Strong alignment with both **domain (fashion)** and **method (CNN)**, directly addresses robustness in classification | **1.00** |
+| **F2** | Related to fashion, but focuses on **search/retrieval**, not classification                                           | **0.62** |
+| **F3** | Irrelevant domain (autonomous driving), unrelated task                                                                | **0.00** |
+
+4. 
+ ```json
+<RESULT>
+[
+  {"pid": "F1", "score": 1.00},
+  {"pid": "F2", "score": 0.62},
+  {"pid": "F3", "score": 0.00}
+]
+</RESULT>
+ ```
+
+Example 2:
+Q: Now this paragraph…
+Paragraph:
+“”
+
+Candidates:
+[
+  { "pid": "K1", "title": "A Knowledge Graph Framework for Medical Decision Support", "abstract": "This work proposes a KG-based system for improving decision-making in clinical diagnosis through structured entity relationships and reasoning paths..." },
+  { "pid": "K2", "title": "Graph Neural Networks for Fake News Detection", "abstract": "We apply GNNs to social graphs for detecting misinformation, focusing on node classification and edge propagation dynamics..." },
+  { "pid": "K3", "title": "Interpretable AI with Symbolic and Neural Reasoning", "abstract": "Combining symbolic logic and neural networks, this study builds a hybrid reasoning model for transparent AI systems, applied to general decision domains..." }
+]
+
+
+Let’s think step by step:
+1. Move 1: “Effective decision making in complex domains... requires structured knowledge.” → Establishes importance of structured decision-making.
+   Move 2: “Knowledge graphs offer a powerful way…” and “KGs enhance the transparency…” → Identifies gap in using unstructured data, promotes KGs as a better alternative.
+   Move 3: “This paper investigates the role of knowledge graphs in supporting…” → Introduces the paper’s contribution in filling the niche.
+2. Topic: Use of knowledge graphs in explainable, data-driven decision making Intent: To explore how knowledge graphs and GNNs enhance reasoning, transparency, and context-aware decisions.
+3. 
+| pid    | Match Analysis                                                                                | Score    |
+| ------ | --------------------------------------------------------------------------------------------- | -------- |
+| **K1** | Perfect alignment: uses **KGs for decision support** in a real-world domain                   | **1.00** |
+| **K2** | GNNs used, but not focused on decision making or explainability                               | **0.40** |
+| **K3** | High conceptual alignment with **explainability** and **reasoning**, but less emphasis on KGs | **0.70** |
+
+4. 
+```json
+<RESULT>
+[
+  {"pid": "K1", "score": 1.00},
+  {"pid": "K3", "score": 0.70},
+  {"pid": "K2", "score": 0.40}
+]
+</RESULT>
+```
+
+Think silently. **Do not** show your reasoning. Output *only* the <RESULT>[…]</RESULT> block.
+
+<|start_header_id|>user<|end_header_id|>
+Now you:
+
+Q: Below is your paragraph and candidate list. Follow the same numbered “think step by step” CoT, then output **only** the final `<RESULT>[…]` JSON.
+
+<<<PARAGRAPH>>>
+{PASTE YOUR PARAGRAPH HERE}
+
+<<<CANDIDATES>>>
+   [
+     {"pid":"<paper_id>", "score":<score>},
+     {"pid":"<paper_id>", "score":<score>},
+     {"pid":"<paper_id>", "score":<score>},
+     … 
+   ]
+<|end_of_text|>
+```
