@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 
 # Hard-coded testset path and params
 TESTSET_PATH   = Path("/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020_references.jsonl")
-MAX_CASES      = 100
+MAX_CASES      = 5
 SIM_THRESHOLD  = 0.95
 TOPK_LIST     = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20) # K-values for evaluation metrics
 
@@ -115,20 +115,17 @@ def evaluate_case(
             hits.append(False)
 
     # 10) Build metrics using this “hits” list
+    n_rel = len(ref_ids)
     results = {}
     for k in TOPK_LIST:
         topk = hits[:k]
-        n_rel = len(ref_ids)
-        results[f"P@{k}"]  = sum(topk)/k
-        # how many distinct refs we covered in top‐k?
-        covered = min(len(ref_ids), sum(topk))
-        results[f"R@{k}"]  = covered / n_rel if n_rel else 0.0
-        results[f"HR@{k}"] = float(any(topk))
-        # For NDCG, build relevance array r_i ∈ {0,1}
-        dcg  = sum(r/np.log2(i+2) for i,r in enumerate(topk))
-        ideal = sorted(topk, reverse=True)
-        idcg = sum(r/np.log2(i+2) for i,r in enumerate(ideal))
-        results[f"NDCG@{k}"] = dcg/idcg if idcg>0 else 0.0
+        p_at_k = sum(topk) / k
+        hr_at_k = float(any(topk))
+        r_at_k = sum(topk) / n_rel if n_rel else 0.0
+        dcg = sum(rel / np.log2(idx + 2) for idx, rel in enumerate(topk))
+        idcg = sum(1 / np.log2(i + 2) for i in range(min(n_rel, k)))
+        ndcg = (dcg / idcg) if idcg else 0.0
+        results.update({f"P@{k}": p_at_k, f"HR@{k}": hr_at_k, f"R@{k}": r_at_k, f"NDCG@{k}": ndcg})
 
     return results
 
@@ -161,6 +158,25 @@ def main() -> None:
         plt.tight_layout()
         plt.savefig(Path(__file__).parent / "eval" / f"{prefix.lower()}_bm25.png", dpi=200)
         plt.close()
+
+    rows: List[dict] = []
+    for rec in df.to_dict("records"):
+        m = evaluate_case(
+            rec["paragraph"],
+            [str(x) for x in rec.get("references", [])],
+            rec.get("year")
+        )
+        m["method"] = "bm25_full"                   
+        rows.append(m)
+
+    # 3) build DataFrame and write to CSV
+    metric_df = pd.DataFrame(rows)
+    out_path = Path(__file__).parent / "csv" / "metrics_bm25_full.csv"
+    metric_df.to_csv(out_path, index=False)
+
+    # 4) print average metrics
+    print("\nBM25 full-text average metrics:\n",
+          metric_df.mean(numeric_only=True).round(4))
 
 if __name__ == "__main__":
     main()

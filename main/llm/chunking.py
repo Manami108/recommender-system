@@ -49,7 +49,7 @@ def _sliding_windows(seq: List[int], win: int, stride: int) -> Iterator[List[int
 # now window is set to 128, stride is set to 64, but needs reference and experiment 
 def chunk_tokens(text: str,
                  tokenizer: AutoTokenizer,
-                 win: int = 128,
+                 win: int = 256,
                  stride: int = 64) -> List[str]:
     ids = tokenizer.encode(text, add_special_tokens=False)
     decoded_chunks = [
