@@ -41,9 +41,9 @@ _mdl = AutoModelForCausalLM.from_pretrained(
     trust_remote_code=True          # avoids class-mismatch errors
 )
 
-MAX_GEN    = 1400 # max tokens to generate per prompt
+MAX_GEN    = 1600 # max tokens to generate per prompt
 MAX_ABS_CH = 750  # max characters of abstract to include, but I am not using it 
-BATCH_SIZE = 5 # how many candidates per LLM call
+BATCH_SIZE = 3 # how many candidates per LLM call
 MAX_POOL   = 60  # cap on total candidates before batching
 TOK_HEAD = _mdl.config.max_position_embeddings - MAX_GEN   # max context tokens (after tokenization)
 
