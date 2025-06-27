@@ -18,7 +18,7 @@ _MODEL_ID  = os.getenv("LLAMA_MODEL",  "meta-llama/Meta-Llama-3.1-8B-Instruct")
 # https://medium.com/@tahirbalarabe2/prompt-engineering-with-llama-3-3-032daa5999f7
 # https://www.kaggle.com/code/manojsrivatsav/prompt-engineering-with-llama-3-1-8b
 
-_PROMPT_PATH = Path(__file__).parent / "prompts" / "working2.prompt"
+_PROMPT_PATH = Path(__file__).parent / "prompts" / "working3.prompt"
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -41,9 +41,9 @@ _mdl = AutoModelForCausalLM.from_pretrained(
     trust_remote_code=True          # avoids class-mismatch errors
 )
 
-MAX_GEN    = 1000 # max tokens to generate per prompt
+MAX_GEN    = 1400 # max tokens to generate per prompt
 MAX_ABS_CH = 750  # max characters of abstract to include, but I am not using it 
-BATCH_SIZE = 1 # how many candidates per LLM call
+BATCH_SIZE = 5 # how many candidates per LLM call
 MAX_POOL   = 60  # cap on total candidates before batching
 TOK_HEAD = _mdl.config.max_position_embeddings - MAX_GEN   # max context tokens (after tokenization)
 
@@ -141,7 +141,7 @@ def rerank_batch(
         raw = re.sub(r"<\|(?:eot_id|eom_id)\|>.*$", "", raw_out, flags=re.DOTALL).strip()
         # print("prompt tokens:", len(_tok(prompt).input_ids))
         # print("max_new_tokens:", max_gen_this_call)
-        # print(raw_out)   # full, or at least first 800 chars
+        print(raw_out)   # full, or at least first 800 chars
         # print("[checkpoint] after prompt")      # already prints prompt
         # torch.cuda.synchronize()
         # print("[checkpoint] before generate")
@@ -200,12 +200,16 @@ def rerank_batch(
 
     # Combine and global sort
     scores = pd.concat(all_scores, ignore_index=True)
+    # print("\n[DEBUG] raw scores:\n", scores.to_string(index=False))
     merged = (
         candidates.assign(pid=candidates["pid"].astype(str))
         .merge(scores, on="pid", how="inner")
         .sort_values("score", ascending=False)
         .head(k)
     )
+    topk_debug = merged.head(k)
+    print(f"\nTop {k} candidates and scores:\n", topk_debug[["pid","score"]].to_string(index=False))
+
     return merged
 
 if __name__ == "__main__":

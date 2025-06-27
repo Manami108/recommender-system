@@ -10,12 +10,13 @@ from neo4j import GraphDatabase
 
 from chunking import clean_text
 from recall import recall_fulltext, fetch_metadata, embed
+import matplotlib.pyplot as plt         
 
 # Hard-coded testset path and params
 TESTSET_PATH   = Path("/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020_references.jsonl")
 MAX_CASES      = 100
 SIM_THRESHOLD  = 0.95
-TOPK_LIST      = (3, 5, 10, 15, 20)
+TOPK_LIST     = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20) # K-values for evaluation metrics
 
 # Neo4j
 NEO4J_URI  = os.getenv("NEO4J_URI",  "bolt://localhost:7687")
@@ -25,7 +26,6 @@ driver     = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASS))
 
 
 # cosign similarity, precision, HR, recall, NDCG, year sort
-
 def cosine_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return a @ b.T
 
@@ -54,7 +54,12 @@ def fetch_year_by_doi(doi: Optional[str]) -> Optional[int]:
     return rec["year"] if rec and rec["year"] is not None else None
 
 
-def evaluate_case(paragraph: str, true_pids: List[str]):
+def evaluate_case(
+    paragraph: str,
+    true_pids: List[str],
+    target_year: Optional[int] = None
+) -> dict:
+
     # take the raw paragraph, clean it (lower-casing, removing punctuation/stopwords, etc.), 
     # so that BM25 and embeddings both work on normalized text.
     cleaned = clean_text(paragraph)
@@ -67,9 +72,11 @@ def evaluate_case(paragraph: str, true_pids: List[str]):
     meta   = fetch_metadata(bm25["pid"].tolist())
     merged = (
         bm25
-        .merge(meta[["pid", "abstract"]], on="pid", how="left")
+        .merge(meta[["pid","abstract","year"]], on="pid", how="left")
         .dropna(subset=["abstract"])
     )
+    if target_year is not None:
+        merged = merged[merged["year"] < target_year]
 
     # 3) fetch and embed all the true reference papers’ abstracts. 
     # If none have valid abstracts, create a zero-matrix so that nothing is ever “similar.”
@@ -125,15 +132,35 @@ def evaluate_case(paragraph: str, true_pids: List[str]):
 
     return results
 
-def main():
+def main() -> None:
     df = pd.read_json(TESTSET_PATH, lines=True).head(MAX_CASES)
     all_metrics = []
-    for case in df.to_dict("records"):
-        all_metrics.append(evaluate_case(case["paragraph"], case.get("references",[])))
 
-    avg = pd.DataFrame(all_metrics).mean(numeric_only=True)
-    print("\nBM25 full-text (k=20) average metrics:\n")
-    print(avg)
+    for rec in df.to_dict("records"):
+        metrics = evaluate_case(
+            rec["paragraph"],
+            [str(x) for x in rec.get("references", [])],
+            rec.get("year")
+        )
+        all_metrics.append(metrics)
+
+    metric_df = pd.DataFrame(all_metrics)
+    print("\nBM25 + LLM rerank (k=20) average metrics:\n")
+    print(metric_df.mean(numeric_only=True).round(4))
+
+    # plotting (optional)
+    ks = np.array(TOPK_LIST)
+    for prefix in ["P","HR","R","NDCG"]:
+        y = metric_df[[f"{prefix}@{k}" for k in ks]].mean().values
+        plt.figure()
+        plt.plot(ks, y, marker="o")
+        plt.title(f"{prefix}@k vs k")
+        plt.xlabel("k")
+        plt.ylabel(prefix)
+        plt.grid(True)
+        plt.tight_layout()
+        plt.savefig(Path(__file__).parent / "eval" / f"{prefix.lower()}_bm25.png", dpi=200)
+        plt.close()
 
 if __name__ == "__main__":
     main()

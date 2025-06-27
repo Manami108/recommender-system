@@ -1,162 +1,174 @@
-#!/usr/bin/env python
-# eval_ctx_llm.py (with one-to-one ground truth matching)
-# ---------------------------------------------------------------------------
-# Evaluate LLM contextual-prompt reranking over four recall sources:
-#   1) full-text BM25
-#   2) chunked BM25
-#   3) full embedding
-#   4) chunked embedding
-# then rerank via contextual LLM
-# Metrics updated to use one-to-one matching of recommendations to references.
-# ---------------------------------------------------------------------------
 
+# This is evaluation code
+
+from __future__ import annotations
 import os
-from pathlib import Path
-from typing import List, Optional
-
+import json
 import numpy as np
 import pandas as pd
-from neo4j import GraphDatabase
-
+from pathlib import Path
+from typing import List, Optional
+from neo4j import GraphDatabase, READ_ACCESS
+from transformers import AutoTokenizer
 from chunking import clean_text, chunk_tokens
 from recall import (
     recall_fulltext,
     recall_vector,
+    recall_by_chunks,
+    rrf_fuse, 
     fetch_metadata,
-    embed
+    embed,
 )
-from rerank_llm import llm_contextual_rerank
-from transformers import AutoTokenizer
+from rerank_llm import rerank_batch, RerankError  # returns DataFrame with pid, score
+import matplotlib.pyplot as plt         
 
-# ─────────────────────────── CONFIG ──────────────────────────────────────── #
 
-TESTSET_PATH  = Path("/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020_references.jsonl")
-MAX_CASES     = 3
-SIM_THRESHOLD = 0.90
-TOPK_LIST     = (3, 5, 10, 15, 20)
+# config
+TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020_references.jsonl"))
+MAX_CASES     = int(os.getenv("MAX_CASES", 25)) # Number of test cases to evaluate
+SIM_THRESHOLD = float(os.getenv("SIM_THRESHOLD", 0.95))
+TOPK_LIST     = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20) # K-values for evaluation metrics
 
-NEO4J_URI  = os.getenv("NEO4J_URI",  "bolt://localhost:7687")
-NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
-NEO4J_PASS = os.getenv("NEO4J_PASS", "***REMOVED***")
-driver     = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASS))
 
-# Initialize tokenizer for chunking
-TOKENIZER = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3-8B-Instruct")
+# Neo4j connection
+_NEO4J_URI  = os.getenv("NEO4J_URI",  "bolt://localhost:7687")
+_NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
+_NEO4J_PASS = os.getenv("NEO4J_PASS", "secret")
+_driver     = GraphDatabase.driver(_NEO4J_URI, auth=(_NEO4J_USER, _NEO4J_PASS))
 
-# ─────────────────────────── METRIC HELPERS ─────────────────────────────── #
+# Tokenizer for chunking
+TOKENIZER  = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct", use_fast=True)
 
+# helpers
 def cosine_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return a @ b.T
 
-# ─────────────────────────── EVALUATION ─────────────────────────────────── #
-
-def evaluate_case(paragraph: str,
-                  true_pids: List[str],
-                  target_year: Optional[int] = None) -> dict:
-    # 1) Preprocess & chunk
+def evaluate_case(
+    paragraph: str,
+    true_pids: List[str],
+    target_year: Optional[int] = None
+) -> dict:
+    # take the raw paragraph, clean it (lower-casing, removing punctuation/stopwords, etc.), 
+    # so that BM25 and embeddings both work on normalized text.
     cleaned = clean_text(paragraph)
-    chunks  = chunk_tokens(cleaned, TOKENIZER, win=128, stride=64)
 
-    # 2) Recall from four sources
-    bm25_full  = recall_fulltext(cleaned, k=40).assign(source="full_bm25")
-    # chunk-level BM25: union across chunks
-    bm25_rows = [recall_fulltext(ch, k=40) for ch in chunks]
-    chunk_bm25 = (pd.concat(bm25_rows, ignore_index=True)
-                    .drop_duplicates("pid")
-                    .assign(source="chunk_bm25"))
-    full_vec   = recall_vector(embed(cleaned), k=40, sim_threshold=0.30).assign(source="full_vec")
-    vec_rows = [recall_vector(embed(ch), k=40, sim_threshold=0.30) for ch in chunks]
-    chunk_vec  = (pd.concat(vec_rows, ignore_index=True)
-                    .drop_duplicates("pid")
-                    .assign(source="chunk_vec"))
+    # 1) This runs a full-text BM25 search over my paragraph document index, returning the top 40 candidate paper IDs along with their BM25 scores.
+    bm25 = recall_fulltext(cleaned, k=20)
 
-    # 3) Combine & dedupe candidates
-    pool = pd.concat([bm25_full, chunk_bm25, full_vec, chunk_vec], ignore_index=True)
-    candidates = (pool
-                  .sort_values(["source","sim"], ascending=[True, False])
-                  .drop_duplicates("pid", keep="first")
-                  .reset_index(drop=True))
-
-    # 4) Metadata & filter by year
-    meta   = fetch_metadata(candidates["pid"].tolist())
-    merged = (candidates
-              .merge(meta[["pid","abstract","year"]], on="pid", how="left")
-              .dropna(subset=["abstract"]))
+    # 2) I pull each candidate’s abstract and publication year from Neo4j, 
+    # drop any papers missing an abstract, and filter out papers published after the paragraph’s target year.
+    meta   = fetch_metadata(bm25["pid"].tolist())
+    merged = (
+        bm25
+        .merge(meta[["pid", "title", "abstract", "year"]], on="pid", how="left")
+        .dropna(subset=["abstract"])
+    )
     if target_year is not None:
-        merged = merged[merged["year"] <= target_year]
+        merged = merged[merged["year"] < target_year]
     if merged.empty:
-        raise ValueError("No candidates after filtering")
+        raise ValueError("Empty candidate set after filtering by year and abstract")
 
-    # 5) Contextual LLM rerank
     try:
-        rer = llm_contextual_rerank(
+        reranked = rerank_batch(
             paragraph,
             merged[["pid","title","abstract"]],
-            max_candidates=len(merged),
-            batch_size=len(merged)
+            k=20,
+            # batch_size=…  you can tune this
         )
-        predicted = rer["pid"].tolist()
-    except Exception:
-        predicted = merged["pid"].tolist()
+        final_pids = reranked["pid"].tolist()
+    except RerankError as e:
+        print("⚠️ Rerank failed, fallback to BM25 order:", e)
+        final_pids = merged["pid"].tolist()
 
-    # 6) Prepare reference embeddings
+    # 3) fetch and embed all the true reference papers’ abstracts. 
+    # If none have valid abstracts, create a zero-matrix so that nothing is ever “similar.”
     ref_meta = fetch_metadata([str(p) for p in true_pids]).dropna(subset=["abstract"])
-    ref_ids  = ref_meta["pid"].tolist()
+    ref_ids  = list(ref_meta["pid"])
     ref_embs = np.stack([embed(a) for a in ref_meta["abstract"]]) if ref_ids else np.zeros((0,768))
 
-    # 7) Prepare candidate embeddings
-    cand_ids  = predicted
-    cand_absts= merged.set_index("pid").loc[cand_ids, "abstract"].tolist()
-    cand_embs = np.stack([embed(a) for a in cand_absts])
 
-    # 8) Compute similarity matrix
-    sims = cosine_matrix(cand_embs, ref_embs) if ref_ids else np.zeros((len(cand_ids),0))
+    # 7) Embed each candidate’s abstract
+    cand_meta = merged.set_index("pid").loc[final_pids]
+    cand_absts = cand_meta["abstract"].tolist()
+    cand_embs  = np.stack([embed(a) for a in cand_absts])
 
-    # 9) One-to-one greedy matching
+    # 8) Compute full similarity matrix: candidates × references
+    sims      = cosine_matrix(cand_embs, ref_embs) if ref_ids else np.zeros((len(final_pids),0))
     unmatched = set(range(len(ref_ids)))
-    hits = []
-    for i in range(len(cand_ids)):
+    hits      = []
+
+    for i in range(len(final_pids)):
         if not unmatched:
             hits.append(False)
             continue
-        # find best unmatched ref for this candidate
         ref_idxs = list(unmatched)
         sim_vals = sims[i, ref_idxs]
-        best_j  = sim_vals.argmax()
-        best_sim= sim_vals[best_j]
-        if best_sim >= SIM_THRESHOLD:
+        j = sim_vals.argmax()
+        if sim_vals[j] >= SIM_THRESHOLD:
             hits.append(True)
-            unmatched.remove(ref_idxs[best_j])
+            unmatched.remove(ref_idxs[j])
         else:
             hits.append(False)
 
-    # 10) Compute metrics
-    results = {}
-    n_rel    = len(ref_ids)
+    # https://www.evidentlyai.com/ranking-metrics/evaluating-recommender-systems    
+    # P@k  = # relevant hits in top-k / k
+    # HR@k = # whether at least one hit in top-k
+    # R@k  = # hits / total ground-truth
+    # NDCG = # relevance-weighted discounted ranking quality
+    n_rel = len(ref_ids)
+    out   = {}
     for k in TOPK_LIST:
         topk = hits[:k]
-        results[f"P@{k}"]  = sum(topk)/k
-        results[f"HR@{k}"] = float(any(topk))
-        covered = sum(topk)
-        results[f"R@{k}"]  = covered / n_rel if n_rel else 0.0
-        # NDCG
-        dcg  = sum(r/np.log2(i+2) for i,r in enumerate(topk))
-        idcg = sum(1/np.log2(i+2) for i in range(min(n_rel,k)))
-        results[f"NDCG@{k}"] = dcg/idcg if idcg>0 else 0.0
+        p_at_k = sum(topk) / k
+        hr_at_k = float(any(topk))
+        r_at_k = sum(topk) / n_rel if n_rel else 0.0
+        dcg = sum(rel / np.log2(idx + 2) for idx, rel in enumerate(topk))
+        idcg = sum(1 / np.log2(i + 2) for i in range(min(n_rel, k)))
+        ndcg = (dcg / idcg) if idcg else 0.0
+        out.update({f"P@{k}": p_at_k, f"HR@{k}": hr_at_k, f"R@{k}": r_at_k, f"NDCG@{k}": ndcg})
+    return out
 
-    return results
+# main function
+# Runs evaluation over the test cases and prints the average metrics.
+import matplotlib
+matplotlib.use("Agg") 
 
-
-def main():
+def main() -> None:
+    if not TESTSET_PATH.exists():
+        raise FileNotFoundError(f"Testset not found at {TESTSET_PATH}")
     df = pd.read_json(TESTSET_PATH, lines=True).head(MAX_CASES)
-    all_m = []
-    for case in df.to_dict("records"):
-        yr = case.get("year") or None
-        all_m.append(evaluate_case(case["paragraph"], case.get("references", []), yr))
+    metrics = []
+    for rec in df.to_dict("records"):
+        metrics.append(
+            evaluate_case(
+                rec["paragraph"],
+                [str(pid) for pid in rec.get("references", [])],
+                rec.get("year")
+            )
+        )
+    metric_df = pd.DataFrame(metrics)
+    ks = np.array(TOPK_LIST)
 
-    avg = pd.DataFrame(all_m).mean(numeric_only=True)
-    print("\nContextual LLM rerank average metrics over four recall sources:\n")
-    print(avg)
+    for prefix in ["P", "HR", "R", "NDCG"]:
+        y = metric_df[[f"{prefix}@{k}" for k in ks]].mean().values
+
+        # 1) create & plot
+        plt.figure()
+        plt.plot(ks, y, marker="o")
+        plt.title(f"{prefix}@k vs k  (averaged over {len(metric_df)} paragraphs)")
+        plt.xlabel("k: # of recommended papers")
+        plt.ylabel(prefix)
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+
+        # 2) save and close
+        plt.savefig(Path(__file__).parent / "eval" / f"{prefix.lower()}_atk.png", dpi=200)
+        plt.close()
+
+    avg = pd.DataFrame(metrics).mean(numeric_only=True)
+    print("\nEvaluation with RRF + LLM scoring - avg metrics:\n", avg.round(4))
+
 
 if __name__ == "__main__":
     main()

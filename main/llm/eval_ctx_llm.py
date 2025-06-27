@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 
 # config
 TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020_references.jsonl"))
-MAX_CASES     = int(os.getenv("MAX_CASES", 1)) # Number of test cases to evaluate
+MAX_CASES     = int(os.getenv("MAX_CASES", 5)) # Number of test cases to evaluate
 SIM_THRESHOLD = float(os.getenv("SIM_THRESHOLD", 0.95))
 TOPK_LIST     = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20) # K-values for evaluation metrics
 
@@ -102,7 +102,7 @@ def evaluate_case(
             cand[["pid","title","abstract"]],
             k=60,
             max_candidates=60,
-            batch_size=3
+            # batch_size=20
         )
         predicted = reranked["pid"].tolist()
     except RerankError as e:
@@ -191,11 +191,99 @@ def main() -> None:
         plt.show()
 
         # 2) save and close
-        plt.savefig(f"{prefix.lower()}_atk.png")
+        plt.savefig(Path(__file__).parent / "eval" / f"{prefix.lower()}_atk.png", dpi=200)
         plt.close()
+
     avg = pd.DataFrame(metrics).mean(numeric_only=True)
     print("\nEvaluation with RRF + LLM scoring - avg metrics:\n", avg.round(4))
 
 
 if __name__ == "__main__":
     main()
+
+
+
+
+def evaluate_case(
+    paragraph: str,
+    true_pids: List[str],
+    target_year: Optional[int] = None
+) -> dict:
+    # 0) normalize the paragraph
+    cleaned = clean_text(paragraph)
+
+    # 1) full‐text BM25 → top 20
+    bm25 = recall_fulltext(cleaned, k=20)
+
+    # 2) fetch metadata & filter
+    meta   = fetch_metadata(bm25["pid"].tolist())
+    merged = (
+        bm25
+        .merge(meta[["pid", "title", "abstract", "year"]], on="pid", how="left")
+        .dropna(subset=["abstract"])
+    )
+    if target_year is not None:
+        merged = merged[merged["year"] < target_year]
+    if merged.empty:
+        raise ValueError("Empty candidate set after filtering by year and abstract")
+
+    # 3) LLM RERANK these 20 → final 20 in new order
+    try:
+        reranked = rerank_batch(
+            paragraph,
+            merged[["pid","title","abstract"]],
+            k=20,
+            # batch_size=…  you can tune this
+        )
+        final_pids = reranked["pid"].tolist()
+    except RerankError as e:
+        print("⚠️ Rerank failed, fallback to BM25 order:", e)
+        final_pids = merged["pid"].tolist()
+
+    # 4) Prepare ground‐truth embeddings
+    ref_meta = fetch_metadata([str(p) for p in true_pids]).dropna(subset=["abstract"])
+    ref_ids  = ref_meta["pid"].tolist()
+    ref_embs = (
+        np.stack([embed(a) for a in ref_meta["abstract"]])
+        if ref_ids else np.zeros((0,768))
+    )
+
+    # 5) Candidate abstracts & embeddings in reranked order
+    cand_meta = merged.set_index("pid").loc[final_pids]
+    cand_absts = cand_meta["abstract"].tolist()
+    cand_embs  = np.stack([embed(a) for a in cand_absts])
+
+    # 6) Greedy one‐to‐one matching
+    sims      = cosine_matrix(cand_embs, ref_embs) if ref_ids else np.zeros((len(final_pids),0))
+    unmatched = set(range(len(ref_ids)))
+    hits      = []
+    for i in range(len(final_pids)):
+        if not unmatched:
+            hits.append(False)
+            continue
+        ref_idxs = list(unmatched)
+        sim_vals = sims[i, ref_idxs]
+        j = sim_vals.argmax()
+        if sim_vals[j] >= SIM_THRESHOLD:
+            hits.append(True)
+            unmatched.remove(ref_idxs[j])
+        else:
+            hits.append(False)
+
+    # 7) Metrics
+    n_rel = len(ref_ids)
+    out   = {}
+    for k in TOPK_LIST:
+        topk    = hits[:k]
+        p_at_k  = sum(topk)/k
+        hr_at_k = float(any(topk))
+        r_at_k  = sum(topk)/n_rel if n_rel else 0.0
+        dcg     = sum(rel/np.log2(idx+2) for idx,rel in enumerate(topk))
+        idcg    = sum(1/np.log2(i+2) for i in range(min(n_rel,k)))
+        ndcg    = (dcg/idcg) if idcg else 0.0
+        out[f"P@{k}"]    = p_at_k
+        out[f"HR@{k}"]   = hr_at_k
+        out[f"R@{k}"]    = r_at_k
+        out[f"NDCG@{k}"] = ndcg
+
+    return out
