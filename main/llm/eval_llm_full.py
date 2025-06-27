@@ -3,19 +3,15 @@
 
 from __future__ import annotations
 import os
-import json
 import numpy as np
 import pandas as pd
 from pathlib import Path
 from typing import List, Optional
-from neo4j import GraphDatabase, READ_ACCESS
+from neo4j import GraphDatabase
 from transformers import AutoTokenizer
-from chunking import clean_text, chunk_tokens
+from chunking import clean_text
 from recall import (
     recall_fulltext,
-    recall_vector,
-    recall_by_chunks,
-    rrf_fuse, 
     fetch_metadata,
     embed,
 )
@@ -25,7 +21,7 @@ import matplotlib.pyplot as plt
 
 # config
 TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020_references.jsonl"))
-MAX_CASES     = int(os.getenv("MAX_CASES", 25)) # Number of test cases to evaluate
+MAX_CASES     = int(os.getenv("MAX_CASES", 20)) # Number of test cases to evaluate
 SIM_THRESHOLD = float(os.getenv("SIM_THRESHOLD", 0.95))
 TOPK_LIST     = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20) # K-values for evaluation metrics
 
