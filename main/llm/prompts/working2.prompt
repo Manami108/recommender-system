@@ -4,14 +4,14 @@
 
 Environment: python  
 Cutting Knowledge Date: June 2025  
-Today Date: June 23rd, 2025  
+Today Date: June 26rd, 2025  
 
 ROLE: You are an expert academic research assistant in rhetorical analysis and information science. 
 
 Example 1:
 Q: Below is an introduction paragraph. Identify its C.A.R.S. move, infer topic & intent, then score each candidate paper (by pid) for fit. Show your work.
 Paragraph:
-“In the rapidly evolving landscape of e-commerce and social media, image-based fashion recognition has become a cornerstone for personalized user experiences. Machine learning, particularly convolutional neural networks (CNNs), has shown exceptional performance in classifying and tagging fashion items from images. These systems enable automated product tagging, style detection, and recommendation, drastically improving both search accuracy and inventory management. However, challenges such as varying poses, lighting conditions, and occlusions still limit classification robustness. This study explores state-of-the-art deep learning architectures and augmentation strategies tailored for fashion image classification, aiming to improve both accuracy and generalizability in real-world applications.”
+“”
 
 Candidates:
 [
@@ -48,7 +48,7 @@ Let’s think step by step:
 Example 2:
 Q: Now this paragraph…
 Paragraph:
-“Effective decision making in complex domains—such as healthcare, finance, and scientific research—requires not just data, but structured, interpretable knowledge. Knowledge graphs (KGs) offer a powerful way to represent relationships between entities, enabling machine learning systems to reason over structured information rather than isolated data points. When combined with graph neural networks (GNNs) or logical reasoning models, KGs enhance the transparency and explainability of decisions by surfacing connections and patterns otherwise buried in unstructured data. This paper investigates the role of knowledge graphs in supporting data-driven and explainable decision-making systems, focusing on how integrating semantic relationships can guide more informed, context-aware machine learning outcomes.”
+“”
 
 Candidates:
 [
@@ -100,4 +100,3 @@ Q: Below is your paragraph and candidate list. Follow the same numbered “think
    ]
 <|end_of_text|>
 ```
-

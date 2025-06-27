@@ -25,9 +25,9 @@ import matplotlib.pyplot as plt
 
 # config
 TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020_references.jsonl"))
-MAX_CASES     = int(os.getenv("MAX_CASES", 5)) # Number of test cases to evaluate
+MAX_CASES     = int(os.getenv("MAX_CASES", 1)) # Number of test cases to evaluate
 SIM_THRESHOLD = float(os.getenv("SIM_THRESHOLD", 0.95))
-TOPK_LIST     = (3, 5, 10, 15, 20) # K-values for evaluation metrics
+TOPK_LIST     = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20) # K-values for evaluation metrics
 
 
 # Neo4j connection
@@ -158,6 +158,9 @@ def evaluate_case(
 
 # main function
 # Runs evaluation over the test cases and prints the average metrics.
+import matplotlib
+matplotlib.use("Agg") 
+
 def main() -> None:
     if not TESTSET_PATH.exists():
         raise FileNotFoundError(f"Testset not found at {TESTSET_PATH}")
@@ -176,6 +179,8 @@ def main() -> None:
 
     for prefix in ["P", "HR", "R", "NDCG"]:
         y = metric_df[[f"{prefix}@{k}" for k in ks]].mean().values
+
+        # 1) create & plot
         plt.figure()
         plt.plot(ks, y, marker="o")
         plt.title(f"{prefix}@k vs k  (averaged over {len(metric_df)} paragraphs)")
@@ -184,6 +189,10 @@ def main() -> None:
         plt.grid(True)
         plt.tight_layout()
         plt.show()
+
+        # 2) save and close
+        plt.savefig(f"{prefix.lower()}_atk.png")
+        plt.close()
     avg = pd.DataFrame(metrics).mean(numeric_only=True)
     print("\nEvaluation with RRF + LLM scoring - avg metrics:\n", avg.round(4))
 
