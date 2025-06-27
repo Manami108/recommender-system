@@ -1,5 +1,5 @@
 
-# This is evaluation code
+# This is new evaluation code. It considers only 
 
 from __future__ import annotations
 import os
@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 
 # config
 TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020_references.jsonl"))
-MAX_CASES     = int(os.getenv("MAX_CASES", 20)) # Number of test cases to evaluate
+MAX_CASES     = int(os.getenv("MAX_CASES", 5)) # Number of test cases to evaluate
 SIM_THRESHOLD = float(os.getenv("SIM_THRESHOLD", 0.95))
 TOPK_LIST     = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20) # K-values for evaluation metrics
 
@@ -144,6 +144,26 @@ def main() -> None:
         )
     metric_df = pd.DataFrame(metrics)
     ks = np.array(TOPK_LIST)
+    # 2) evaluate each paragraph and tag with method name
+    rows: List[dict] = []
+    for rec in df.to_dict("records"):
+        m = evaluate_case(
+            rec["paragraph"],
+            [str(pid) for pid in rec.get("references", [])],
+            rec.get("year")
+        )
+        m["method"] = "bm25_full_llm"   # change this tag per script
+        rows.append(m)
+
+    # 3) build DataFrame, write to CSV
+    metric_df = pd.DataFrame(rows)
+    out_csv   = Path(__file__).parent / "eval" / "metrics_bm25_full_llm.csv"
+    metric_df.to_csv(out_csv, index=False)
+    print(f"\nSaved per‐paragraph metrics to {out_csv}")
+
+    # 4) (optional) print average metrics
+    avg = metric_df.mean(numeric_only=True).round(4)
+    print("\nAverage metrics:\n", avg)
 
     for prefix in ["P", "HR", "R", "NDCG"]:
         y = metric_df[[f"{prefix}@{k}" for k in ks]].mean().values
@@ -159,7 +179,7 @@ def main() -> None:
         plt.show()
 
         # 2) save and close
-        plt.savefig(Path(__file__).parent / "eval" / f"{prefix.lower()}_atk.png", dpi=200)
+        plt.savefig(Path(__file__).parent / "csv" / f"{prefix.lower()}_atk.png", dpi=200)
         plt.close()
 
     avg = pd.DataFrame(metrics).mean(numeric_only=True)
