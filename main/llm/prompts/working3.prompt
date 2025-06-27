@@ -55,8 +55,8 @@ Let’s think step by step:
 ]
 </RESULT>
  ```
-
-Think silently. **Do not** show your reasoning. Output *only* the <RESULT>[…]</RESULT> block.
+ 
+!!! OUTPUT FORMAT: Do **not** show your reasoning. Output **only** one JSON array wrapped in <RESULT>…</RESULT>. Nothing else.
 
 <|start_header_id|>user<|end_header_id|>
 Now you:
