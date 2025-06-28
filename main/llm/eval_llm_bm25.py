@@ -1,5 +1,5 @@
 
-# This is full BM25 only - no hops, no chunks
+# This is full BM25 only - no hops, no chunks but llm reranking 
 from __future__ import annotations
 import os
 import numpy as np
