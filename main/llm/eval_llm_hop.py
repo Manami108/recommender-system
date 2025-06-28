@@ -1,106 +1,123 @@
+# eval_rrf_llm_hop.py  (20 RRF seeds → hop → LLM top-20)
 
 from __future__ import annotations
-import os, json, re, math, logging
+import os, math, logging
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
 import matplotlib
-matplotlib.use("Agg")           # head-less
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from neo4j import GraphDatabase
 from transformers import AutoTokenizer
 
-from chunking       import clean_text
-from recall         import recall_fulltext, fetch_metadata, embed
-from rerank_llm     import rerank_batch, RerankError          
-from hop_reasoning  import multi_hop_topic_citation_reasoning 
-# ─────────────────────────  GLOBALS & PARAMS  ───────────────────────────────
-TESTSET_PATH = Path(os.getenv("TESTSET_PATH",
-                    "/home/abhi/Desktop/Manami/recommender-system/datasets/"
-                    "testset_2020_references.jsonl"))
-MAX_CASES    = int(os.getenv("MAX_CASES", 5))
+from chunking import clean_text, chunk_tokens
+from recall   import (
+    recall_fulltext,
+    recall_vector,
+    recall_by_chunks,
+    rrf_fuse,
+    fetch_metadata,
+    embed,
+)
+from rerank_llm    import rerank_batch, RerankError
+from hop_reasoning import multi_hop_topic_citation_reasoning   # <<< hop >>>
 
-SEEDS        = 5               # take this many highest-scoring LLM papers as seeds
-HOP_TOP_N    = 20              # return ≤ 40 hop papers for each source query
-FINAL_K      = 60              # final candidate pool fed to 2nd-stage LLM
-BATCH_1      = 5               # batch size stage-1
-BATCH_2      = 5              # batch size stage-2
-TOPK_LIST    = tuple(range(1, 21))
-SIM_THRESH   = 0.95            # cosine threshold to count a “hit”
+# config
+TESTSET_PATH = Path(os.getenv(
+    "TESTSET_PATH",
+    "/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020_references.jsonl"))
+MAX_CASES  = int(os.getenv("MAX_CASES", 100))
+TOPK_LIST  = tuple(range(1, 21))
+SIM_THRESH = 0.95
 
-# ───────────────────────────  HELPERS  ──────────────────────────────────────
-_tok = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct",
-                                     use_fast=True)
+RRF_TOPK       = 20  # keep top 20 seeds after RRF fusion
+HOP_TOP_N      = 3   # retrieve up to 20 hop papers per seed
+FINAL_POOL_CAP = 60  # cap total pool size before final LLM
+LLM_TOPK       = 20  # final list size
+
+TOKENIZER = AutoTokenizer.from_pretrained(
+    "meta-llama/Meta-Llama-3.1-8B-Instruct", use_fast=True)
+
+# cosin similarity 
 def cosine_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return a @ b.T
 
-# ───────────────────────  EVALUATION PER PARAGRAPH  ─────────────────────────
-def evaluate_case(paragraph: str,
-                  gold_pids: List[str],
-                  target_year: Optional[int] = None) -> dict:
+# 
+def evaluate_case(
+    paragraph: str,
+    gold_pids: List[str],
+    target_year: Optional[int] = None,
+) -> dict:
 
-    # ----------  STAGE-0  full-text recall  ---------------------------------
-    cleaned = clean_text(paragraph)
-    bm25    = recall_fulltext(cleaned, k=40)          # top-20 BM25 only
-    meta0   = fetch_metadata(bm25.pid.tolist()).dropna(subset=["abstract"])
-    pool0   = bm25.merge(meta0, on="pid")
+    # take the raw paragraph, clean it (lower-casing, removing punctuation/stopwords, etc.), 
+    # so that BM25 and embeddings both work on normalized text.
+    clean = clean_text(paragraph)
+    chunks = chunk_tokens(clean, TOKENIZER, win=256, stride=64)
+
+    # recall & fuse with reciprocal rank fusion (RRF)
+    # full-text & vector for whole paragraph
+    bm25 = recall_fulltext(clean).assign(src="full_bm25")
+    vec  = recall_vector(embed(clean)).assign(src="full_vec")
+    chunk_pool = recall_by_chunks(chunks)
+
+    # apply RRF fusion across all sources
+    # full-doc scores (bm25_score, semantic_score) → hybrid_full
+    # chunk-level max scores → hybrid_chunk
+    # Total hybrid_score = hybrid_full + hybrid_chunk
+    # strip out any extraneous columns so rrf_fuse sees just pid & rank
+    # strip everything except pid & rank on the two full-doc tables
+    for df in (bm25, vec):
+        df.drop(columns=[c for c in df.columns if c not in ("pid", "rank")], inplace=True)
+
+    seeds_df = rrf_fuse(bm25, vec, chunk_pool, top_k=RRF_TOPK)
+    seed_ids = seeds_df.pid.tolist()
+
+    # this is hop expansions
+    hop_df   = multi_hop_topic_citation_reasoning(seed_ids, top_n=HOP_TOP_N)  # <<< hop >>>
+    union_ids = list(dict.fromkeys(seed_ids + hop_df.pid.tolist()))[:FINAL_POOL_CAP]  # <<< hop >>>
+    meta_pool = fetch_metadata(union_ids).dropna(subset=["abstract"])
     if target_year is not None:
-        pool0 = pool0[pool0.year < target_year]
+        meta_pool = meta_pool[meta_pool.year < target_year]
 
-    # ----------  STAGE-1  LLM rerank  (quick)  -------------------------------
+    #  rerank via LLM scoring
     try:
-        rr1 = rerank_batch(paragraph,
-                           pool0[["pid","title","abstract"]],
-                           k=SEEDS,
-                           max_candidates=len(pool0),
-                           batch_size=BATCH_1)
-        seeds = rr1.pid.tolist()
+        reranked = rerank_batch(
+            paragraph,
+            meta_pool[["pid", "title", "abstract"]],
+            k=LLM_TOPK,
+            max_candidates=len(meta_pool))
+        final_ids = reranked.pid.tolist()
     except RerankError as e:
-        logging.warning("Stage-1 rerank failed → fall back to BM25 order (%s)", e)
-        seeds = pool0.pid.head(SEEDS).tolist()
+        logging.warning("LLM rerank failed → fallback order (%s)", e)
+        final_ids = meta_pool.pid.head(LLM_TOPK).tolist()
 
-    # ----------  Hop reasoning  ---------------------------------------------
-    hops_df = multi_hop_topic_citation_reasoning(seeds,
-                                                 top_n=HOP_TOP_N)
-    # de-dup & union
-    union_ids = list(dict.fromkeys(seeds + hops_df.pid.tolist()))[:FINAL_K]
-    meta1     = fetch_metadata(union_ids).dropna(subset=["abstract"])
-
-    # ----------  STAGE-2  LLM rerank (final)  --------------------------------
-    try:
-        rr2 = rerank_batch(paragraph,
-                           meta1[["pid","title","abstract"]],
-                           k=FINAL_K,
-                           max_candidates=FINAL_K,
-                           batch_size=BATCH_2)
-        final_ids = rr2.pid.tolist()
-    except RerankError as e:
-        logging.warning("Stage-2 rerank failed → keep union order (%s)", e)
-        final_ids = meta1.pid.tolist()
-
-    # ----------  offline relevance scoring  ---------------------------------
-    refs = fetch_metadata(gold_pids).dropna(subset=["abstract"])
+    # embed references & predicted candidates
+    # Calculates cosine similarities between reranked abstracts and true references.
+    # For each predicted paper, checks if any unmatched reference has sim ≥ 0.95 → it's a hit.
+    refs     = fetch_metadata(gold_pids).dropna(subset=["abstract"])
     ref_ids  = refs.pid.tolist()
-    ref_emb  = np.stack([embed(a) for a in refs.abstract]) if len(refs) else np.zeros((0,768))
-    cand_emb = np.stack([embed(a) for a in meta1.set_index("pid").loc[final_ids].abstract])
+    ref_emb  = np.stack([embed(a) for a in refs.abstract]) if ref_ids else np.zeros((0,768))
+    cand_emb = np.stack([embed(a) for a in meta_pool.set_index("pid").loc[final_ids].abstract])
 
-    sims = cosine_matrix(cand_emb, ref_emb) if len(refs) else np.zeros((len(final_ids),0))
-    unmatched = set(range(len(ref_ids)))
-    hits = []
+    # greedy match for hit detection
+    sims = cosine_matrix(cand_emb, ref_emb) if ref_ids else np.zeros((len(final_ids),0))
+    unmatched, hits = set(range(len(ref_ids))), []
     for i in range(len(final_ids)):
-        if not unmatched:
-            hits.append(False); continue
+        if not unmatched: hits.append(False); continue
         idxs = list(unmatched)
-        j    = sims[i, idxs].argmax()
+        j = sims[i, idxs].argmax()
         if sims[i, idxs][j] >= SIM_THRESH:
-            hits.append(True)
-            unmatched.remove(idxs[j])
+            hits.append(True); unmatched.remove(idxs[j])
         else:
             hits.append(False)
 
-    # ----------  metrics  ----------------------------------------------------
+    # https://www.evidentlyai.com/ranking-metrics/evaluating-recommender-systems    
+    # P@k  = # relevant hits in top-k / k
+    # HR@k = # whether at least one hit in top-k
+    # R@k  = # hits / total ground-truth
+    # NDCG = # relevance-weighted discounted ranking quality
     out, n_rel = {}, len(ref_ids)
     for k in TOPK_LIST:
         topk = hits[:k]
@@ -112,62 +129,52 @@ def evaluate_case(paragraph: str,
         out[f"NDCG@{k}"] = dcg/idcg if idcg else 0.0
     return out
 
-# ───────────────────────────  MAIN LOOP  ────────────────────────────────────
+import matplotlib
+matplotlib.use("Agg")          # off-screen backend
+
+# main
 def main() -> None:
-
-    if not TESTSET_PATH.exists():
-        raise FileNotFoundError(TESTSET_PATH)
     df = pd.read_json(TESTSET_PATH, lines=True).head(MAX_CASES)
+    rows: list[dict] = []
 
-    metrics = [evaluate_case(rec["paragraph"],
-                             [str(x) for x in rec.get("references", [])],
-                             rec.get("year"))
-               for rec in df.to_dict("records")]
-
-    metric_df = pd.DataFrame(metrics)
-    ks = np.array(TOPK_LIST)
-
-        # 3) evaluate each paragraph and tag with this method
-    rows: List[dict] = []
+    # single pass over all paragraphs
     for rec in df.to_dict("records"):
         m = evaluate_case(
             rec["paragraph"],
             [str(pid) for pid in rec.get("references", [])],
             rec.get("year")
         )
-        m["method"] = "bm25_hop_rerank"   # tag this run
+        m["method"] = "rrf_hop_llm"        # tag this run
         rows.append(m)
 
-    # 4) build a DataFrame and dump to CSV
+    # build DataFrame once
     metric_df = pd.DataFrame(rows)
-    out_csv   = Path(__file__).parent / "csv" / "metrics_bm25_hop_rerank.csv"
-    metric_df.to_csv(out_csv, index=False)
-    print(f"\nSaved per-paragraph metrics to {out_csv}")
 
-    # 5) print average metrics
-    avg = metric_df.mean(numeric_only=True).round(4)
-    print("\nAverage metrics for BM25 → hop → LLM rerank:\n", avg)
+    # 1) console average
+    print("\nRRF → hop → LLM (k=20) average metrics:\n")
+    print(metric_df.mean(numeric_only=True).round(4))
 
+    # 2) aggregate curves
+    ks = np.array(TOPK_LIST)
     save_dir = Path(__file__).parent / "eval"
     save_dir.mkdir(exist_ok=True)
 
-    for pref in ["P","HR","R","NDCG"]:
-        y = metric_df[[f"{pref}@{k}" for k in ks]].mean().values
+    for prefix in ["P", "HR", "R", "NDCG"]:
+        y = metric_df[[f"{prefix}@{k}" for k in ks]].mean().values
         plt.figure()
         plt.plot(ks, y, marker="o")
-        plt.title(f"{pref}@k vs k  (avg over {len(metric_df)} paragraphs)")
-        plt.xlabel("k (# recommended papers)");   plt.ylabel(pref)
-        plt.grid(True); plt.tight_layout()
-        plt.savefig(save_dir / f"{pref.lower()}_hop.png", dpi=200)
+        plt.title(f"{prefix}@k vs k")
+        plt.xlabel("k")
+        plt.ylabel(prefix)
+        plt.grid(True)
+        plt.tight_layout()
+        plt.savefig(save_dir / f"{prefix.lower()}_rrf_hop_llm.png", dpi=200)
         plt.close()
 
-    print("\nAverage metrics over "
-          f"{len(metric_df)} paragraphs:\n",
-          metric_df.mean(numeric_only=True).round(4))
+    # 3) persist CSV
+    csv_dir = Path(__file__).parent / "csv"
+    csv_dir.mkdir(exist_ok=True)
+    metric_df.to_csv(csv_dir / "metrics_rrf_hop_llm.csv", index=False)
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO,
-                        format="%(levelname)s: %(message)s")
     main()
-
-
