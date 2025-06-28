@@ -6,7 +6,7 @@ files = [
     "metrics_bm25_full.csv",
     "metrics_bm25_full_llm.csv",
     "metrics_rrf.csv",
-    # "metrics_rrf_chunk.csv",
+    "metrics_rrf_llm.csv",
     # "metrics_bm25_hop_rerank.csv",
 ]
 dfs = [pd.read_csv(f"./csv/{fn}") for fn in files]
