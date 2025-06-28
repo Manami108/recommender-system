@@ -42,9 +42,8 @@ _mdl = AutoModelForCausalLM.from_pretrained(
 )
 
 MAX_GEN    = 1600 # max tokens to generate per prompt
-MAX_ABS_CH = 750  # max characters of abstract to include, but I am not using it 
 BATCH_SIZE = 3 # how many candidates per LLM call
-MAX_POOL   = 60  # cap on total candidates before batching
+MAX_POOL   = 20  # cap on total candidates before batching
 TOK_HEAD = _mdl.config.max_position_embeddings - MAX_GEN   # max context tokens (after tokenization)
 
 _gen = pipeline(
@@ -53,8 +52,6 @@ _gen = pipeline(
     tokenizer=_tok,
     max_new_tokens=MAX_GEN,
     do_sample=False,
-    # temperature=0,
-    # top_p=1,
     pad_token_id=_tok.eos_token_id,
     return_full_text=False,
 )
@@ -67,7 +64,7 @@ _JSON_RE = re.compile(
     r"(?:<\|?/?RESULT\|?>)?\s*(\[[\s\S]*?\])\s*(?:<\|?/?RESULT\|?>)?",
     re.MULTILINE,
 )
-print(_mdl.config.max_position_embeddings)      # 131072
+# print(_mdl.config.max_position_embeddings)      # 131072
 
 # this is for any reranking specific failures
 class RerankError(RuntimeError):
@@ -82,25 +79,19 @@ def rerank_batch(
     max_candidates: int = MAX_POOL, # drop any beyond this before batching.
     batch_size: int = BATCH_SIZE, # how many candidates per LLM API call.
 ) -> pd.DataFrame:
+    # Return best k candidates
     if len(candidates) > max_candidates:
         candidates = candidates.iloc[:max_candidates].copy()
 
     def wrap_prompt(body: str) -> str:
         # wrap with begin_of_text and end_of_turn
-        return (
-            "<|begin_of_text|>\n"
-            f"{body.strip()}\n"
-            "<|eot_id|>"
-        )
+        return "<|begin_of_text|>\n" + body.strip() + "\n<|eot_id|>"
+
     # Loops over the candidates in chunks of batch_size (e.g. 3 at a time).
     all_scores: List[pd.DataFrame] = []
     for start in range(0, len(candidates), batch_size):
         part = candidates.iloc[start : start + batch_size]
 
-        # build candidate block
-        def trunc(t: str) -> str:
-            return t if len(t) <= MAX_ABS_CH else t[:MAX_ABS_CH] + " …"
-        
         # Concatenates each candidate’s ID, title, and a truncated abstract (so you don’t blow past the token limit).
         # Now, I am not truncating anymore
         cand_block = "\n\n".join(
@@ -141,7 +132,7 @@ def rerank_batch(
         raw = re.sub(r"<\|(?:eot_id|eom_id)\|>.*$", "", raw_out, flags=re.DOTALL).strip()
         # print("prompt tokens:", len(_tok(prompt).input_ids))
         # print("max_new_tokens:", max_gen_this_call)
-        print(raw_out)   # full, or at least first 800 chars
+        # print(raw_out)   # full, or at least first 800 chars
         # print("[checkpoint] after prompt")      # already prints prompt
         # torch.cuda.synchronize()
         # print("[checkpoint] before generate")
@@ -162,34 +153,19 @@ def rerank_batch(
             json_text = "[" + ",".join(objs) + "]"    # wrap → valid JSON array
 
         # Remove any stray trailing commas before ] or }
-        tidy = re.sub(r",\s*(?=[\]\}])", "", json_text)
-        # Ensure we only parse the [ … ] block
-        arr_match = re.search(r"\[.*\]", tidy, flags=re.DOTALL)
-        if not arr_match:
-            raise RerankError(f"Couldn’t locate JSON array in:\n{tidy}")
-        tidy = arr_match.group(0)
-
-
-        # Fix pid quoting
-        tidy = re.sub(r'"pid"\s*:\s*([0-9]+)', r'"pid":"\1"', tidy)
+        tidy = re.sub(r",\s*(?=[\]\}])", "", json_text)            # remove trailing commas
+        tidy = re.sub(r'"pid"\s*:\s*([0-9]+)', r'"pid":"\1"', tidy) # ensure pid quoted
 
         # Parse
         try:
             rec = json.loads(tidy)
         except Exception as e:
             raise RerankError(f"JSON parse failed: {e}\nSnippet:\n{tidy[:200]}")
-        
-        if not isinstance(rec, list):
-            raise RerankError(f"Expected JSON array, got: {type(rec).__name__}")
-        for entry in rec:
-            if not isinstance(entry, dict) or "pid" not in entry or "score" not in entry:
-                raise RerankError(f"Invalid entry in array: {entry!r}")
 
         df = pd.DataFrame(rec)
-        df.columns = [str(c).lower() for c in df.columns]
+        if {"pid", "score"} - set(df.columns):
+            raise RerankError("Expected 'pid' and 'score' fields in JSON.")
 
-        if "pid" not in df or "score" not in df:
-            raise RerankError(f"Expected 'pid' and 'score' fields, got {df.columns.tolist()}")
         df["pid"] = df["pid"].astype(str)
         df["score"] = pd.to_numeric(df["score"], errors="coerce")
 
@@ -201,16 +177,15 @@ def rerank_batch(
     # Combine and global sort
     scores = pd.concat(all_scores, ignore_index=True)
     # print("\n[DEBUG] raw scores:\n", scores.to_string(index=False))
-    merged = (
+    result = (
         candidates.assign(pid=candidates["pid"].astype(str))
         .merge(scores, on="pid", how="inner")
         .sort_values("score", ascending=False)
         .head(k)
     )
-    topk_debug = merged.head(k)
-    print(f"\nTop {k} candidates and scores:\n", topk_debug[["pid","score"]].to_string(index=False))
 
-    return merged
+    logging.debug("Top-k after rerank:\n%s", result[["pid", "score"]].to_string(index=False))
+    return result
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
