@@ -1,5 +1,5 @@
 
-# This is evaluation code which considers 60 candidates and do embedding search as well
+# This is rrf reranking -> llm reranking 
 from __future__ import annotations
 import os
 import json
@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from typing import List, Optional
-from neo4j import GraphDatabase, READ_ACCESS
+from neo4j import GraphDatabase
 from transformers import AutoTokenizer
 from chunking import clean_text, chunk_tokens
 from recall import (
@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt
 
 # config
 TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020_references.jsonl"))
-MAX_CASES     = int(os.getenv("MAX_CASES", 5)) # Number of test cases to evaluate
+MAX_CASES     = int(os.getenv("MAX_CASES", 100)) # Number of test cases to evaluate
 SIM_THRESHOLD = float(os.getenv("SIM_THRESHOLD", 0.95))
 TOPK_LIST     = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20) # K-values for evaluation metrics
 
@@ -68,58 +68,38 @@ def evaluate_case(
     for df in (full_bm25, full_vec):
         df.drop(columns=[c for c in df.columns if c not in ("pid","rank")],
                 inplace=True)
-
-    # now chunk_pool still has pid, rank, source, bm25_score, semantic_score
-    # next drop source on the full-docs only:
-    clean_full_bm25 = full_bm25.drop(columns=["source"], errors="ignore")
-    clean_full_vec  = full_vec .drop(columns=["source"], errors="ignore")
-
+        
     pool = rrf_fuse(
-        clean_full_bm25,
-        clean_full_vec,
-        chunk_pool,      # still contains .source + .rank
-        k_rrf=60,
-        top_k=60
+        full_bm25,             # only pid + rank
+        full_vec,              # only pid + rank
+        chunk_pool,            # pid + rank + source
+        top_k=20,
     )
 
-    # keep top 60 candidates
-    top_cands = pool["pid"].head(60).tolist()
-
-    # Retrieves title, abstract, etc. of the 60 candidates.
-    # Removes papers without abstracts.
-    meta = fetch_metadata(top_cands)
-    cand = meta.dropna(subset=["abstract"])
+    # and extract pids for reranking
+    cand = fetch_metadata(pool["pid"].tolist())[["pid", "title", "abstract", "year"]]
     if target_year is not None:
         cand = cand[cand["year"] < target_year]
     if cand.empty:
-        raise ValueError("Empty candidate set after filtering by year and abstract")
+        raise ValueError("Empty candidate set after filtering by year & abstract")
 
     # 4. rerank via LLM scoring
     try:
-        reranked = rerank_batch(
-            paragraph,
-            cand[["pid","title","abstract"]],
-            k=60,
-            max_candidates=60,
-            # batch_size=20
-        )
+        reranked = rerank_batch(paragraph, cand[["pid", "title", "abstract"]], k=20)
         predicted = reranked["pid"].tolist()
     except RerankError as e:
-        print("⚠️ Rerank failed, fallback to pool order:", e)
+        print("⚠️  Rerank failed, using RRF order:", e)
         predicted = cand["pid"].tolist()
 
     # embed references & predicted candidates
     # Calculates cosine similarities between reranked abstracts and true references.
     # For each predicted paper, checks if any unmatched reference has sim ≥ 0.95 → it's a hit.
-    ref_meta = fetch_metadata(true_pids)
-    ref_meta = ref_meta.dropna(subset=["abstract"])
+    ref_meta = fetch_metadata(true_pids).dropna(subset=["abstract"])
     ref_ids  = ref_meta["pid"].tolist()
-    ref_emb  = (
-        np.stack([embed(txt) for txt in ref_meta["abstract"]])
-        if ref_ids else np.zeros((0, 768))
-    )
+    ref_emb  = np.stack([embed(t) for t in ref_meta["abstract"]]) if ref_ids else np.zeros((0, 768))
+
     cand_meta = cand.set_index("pid").loc[predicted]
-    cand_emb  = np.stack([embed(txt) for txt in cand_meta["abstract"].tolist()])
+    cand_emb  = np.stack([embed(t) for t in cand_meta["abstract"]])
 
     # 6. greedy match for hit detection
     sims = cosine_matrix(cand_emb, ref_emb) if ref_ids else np.zeros((len(predicted),0))
@@ -157,68 +137,47 @@ def evaluate_case(
 
 # main function
 # Runs evaluation over the test cases and prints the average metrics.
-import matplotlib
-matplotlib.use("Agg") 
-
+# main
 def main() -> None:
-    if not TESTSET_PATH.exists():
-        raise FileNotFoundError(f"Testset not found at {TESTSET_PATH}")
     df = pd.read_json(TESTSET_PATH, lines=True).head(MAX_CASES)
-    metrics = []
-    for rec in df.to_dict("records"):
-        metrics.append(
-            evaluate_case(
-                rec["paragraph"],
-                [str(pid) for pid in rec.get("references", [])],
-                rec.get("year")
-            )
-        )
-    metric_df = pd.DataFrame(metrics)
-    ks = np.array(TOPK_LIST)
+    rows: list[dict] = []
 
-    # 3) run evaluation and collect per‐paragraph metrics
-    rows: List[dict] = []
+    # Single pass: evaluate each paragraph once
     for rec in df.to_dict("records"):
         m = evaluate_case(
             rec["paragraph"],
-            [str(pid) for pid in rec.get("references", [])],
+            [str(x) for x in rec.get("references", [])],
             rec.get("year")
         )
-        m["method"] = "rrf_chunk"   # tag this run
+        m["method"] = "rrf_llm"     # or "bm25_full" as you prefer
         rows.append(m)
 
-    # 4) build DataFrame and write out CSV
+    # Build the DataFrame once
     metric_df = pd.DataFrame(rows)
-    out_csv   = Path(__file__).parent / "eval" / "metrics_rrf_chunk.csv"
-    metric_df.to_csv(out_csv, index=False)
-    print(f"\nSaved per-paragraph metrics to {out_csv}")
 
-    # 5) (optional) print average metrics
-    avg = metric_df.mean(numeric_only=True).round(4)
-    print("\nAverage metrics for RRF+chunked rerank:\n", avg)
+    # 1) Print averages
+    print("\nRRF + LLM (k=20) average metrics:\n")
+    print(metric_df.mean(numeric_only=True).round(4))
 
-    for prefix in ["P", "HR", "R", "NDCG"]:
+    # 2) Plot
+    ks = np.array(TOPK_LIST)
+    for prefix in ["P","HR","R","NDCG"]:
         y = metric_df[[f"{prefix}@{k}" for k in ks]].mean().values
-
-        # 1) create & plot
         plt.figure()
         plt.plot(ks, y, marker="o")
-        plt.title(f"{prefix}@k vs k  (averaged over {len(metric_df)} paragraphs)")
-        plt.xlabel("k: # of recommended papers")
+        plt.title(f"{prefix}@k vs k")
+        plt.xlabel("k")
         plt.ylabel(prefix)
         plt.grid(True)
         plt.tight_layout()
-        plt.show()
-
-        # 2) save and close
-        plt.savefig(Path(__file__).parent / "csv" / f"{prefix.lower()}_chunk.png", dpi=200)
+        plt.savefig(Path(__file__).parent / "eval" / f"{prefix.lower()}_rrf_llm.png", dpi=200)
         plt.close()
 
-    avg = pd.DataFrame(metrics).mean(numeric_only=True)
-    print("\nEvaluation with RRF + LLM scoring - avg metrics:\n", avg.round(4))
-
+    # 3) Save CSV
+    out_path = Path(__file__).parent / "csv" / "metrics_rrf_llm.csv"
+    out_path.parent.mkdir(exist_ok=True)
+    metric_df.to_csv(out_path, index=False)
 
 if __name__ == "__main__":
     main()
-
 
