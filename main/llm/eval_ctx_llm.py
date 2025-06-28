@@ -68,11 +68,7 @@ def evaluate_case(
     for df in (full_bm25, full_vec):
         df.drop(columns=[c for c in df.columns if c not in ("pid","rank")],
                 inplace=True)
-
-    # next drop source on the full-docs only:
-    for df in (full_bm25, full_vec):
-        df.drop(columns=[c for c in df.columns if c not in ("pid", "rank")], inplace=True)
-
+        
     pool = rrf_fuse(
         full_bm25,             # only pid + rank
         full_vec,              # only pid + rank
