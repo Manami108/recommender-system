@@ -1,6 +1,5 @@
 
 # This is evaluation code which considers 60 candidates and do embedding search as well
-
 from __future__ import annotations
 import os
 import json
@@ -22,13 +21,11 @@ from recall import (
 from rerank_llm import rerank_batch, RerankError  # returns DataFrame with pid, score
 import matplotlib.pyplot as plt         
 
-
 # config
 TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020_references.jsonl"))
 MAX_CASES     = int(os.getenv("MAX_CASES", 5)) # Number of test cases to evaluate
 SIM_THRESHOLD = float(os.getenv("SIM_THRESHOLD", 0.95))
 TOPK_LIST     = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20) # K-values for evaluation metrics
-
 
 # Neo4j connection
 _NEO4J_URI  = os.getenv("NEO4J_URI",  "bolt://localhost:7687")
@@ -39,7 +36,7 @@ _driver     = GraphDatabase.driver(_NEO4J_URI, auth=(_NEO4J_USER, _NEO4J_PASS))
 # Tokenizer for chunking
 TOKENIZER  = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct", use_fast=True)
 
-# helpers
+# cosine similarity 
 def cosine_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return a @ b.T
 
@@ -48,11 +45,12 @@ def evaluate_case(
     true_pids: List[str],
     target_year: Optional[int] = None
 ) -> dict:
-    # 1. clean & chunk paragraph
+    # take the raw paragraph, clean it (lower-casing, removing punctuation/stopwords, etc.), 
+    # so that BM25 and embeddings both work on normalized text.
     cleaned = clean_text(paragraph)
     chunks  = chunk_tokens(cleaned, TOKENIZER, win=256, stride=64)
 
-    # 2. recall & fuse with reciprocal rank fusion (RRF)
+    # recall & fuse with reciprocal rank fusion (RRF)
     # full-text & vector for whole paragraph
     full_bm25 = recall_fulltext(cleaned).assign(src="full_bm25")
     full_vec  = recall_vector(embed(cleaned)).assign(src="full_vec")
