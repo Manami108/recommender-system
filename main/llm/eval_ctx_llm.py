@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt
 
 # config
 TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020_references.jsonl"))
-MAX_CASES     = int(os.getenv("MAX_CASES", 5)) # Number of test cases to evaluate
+MAX_CASES     = int(os.getenv("MAX_CASES", 100)) # Number of test cases to evaluate
 SIM_THRESHOLD = float(os.getenv("SIM_THRESHOLD", 0.95))
 TOPK_LIST     = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20) # K-values for evaluation metrics
 
@@ -161,29 +161,24 @@ def main() -> None:
         )
 
     metric_df = pd.DataFrame(rows)
-    out_csv   = Path(__file__).parent / "csv" / "metrics_rrf_chunk.csv"
-    out_csv.parent.mkdir(exist_ok=True)
-    metric_df.to_csv(out_csv, index=False)
-    print(f"Saved per-paragraph metrics → {out_csv}")
+    out_path = Path(__file__).parent / "csv" / "metrics_rrf_llm.csv"
+    metric_df.to_csv(out_path, index=False)
 
-    # Average summary
     avg = metric_df.mean(numeric_only=True).round(4)
-    print("\nAverage metrics (RRF + LLM):\n", avg)
+    print("\nAverage metrics (pure RRF):\n", avg)
 
     ks = np.array(TOPK_LIST)
     for prefix in ["P", "HR", "R", "NDCG"]:
         y = metric_df[[f"{prefix}@{k}" for k in ks]].mean().values
         plt.figure()
         plt.plot(ks, y, marker="o")
-        plt.title(f"{prefix}@k  (averaged over {len(metric_df)} paragraphs)")
+        plt.title(f"{prefix}@k vs k")
         plt.xlabel("k")
         plt.ylabel(prefix)
         plt.grid(True)
         plt.tight_layout()
-        plt.savefig(Path(__file__).parent / "eval" / f"{prefix.lower()}_curve.png", dpi=200)
+        plt.savefig(Path(__file__).parent / "eval" / f"{prefix.lower()}_rrf_llm.png", dpi=200)
         plt.close()
-
-
 if __name__ == "__main__":
     main()
 
