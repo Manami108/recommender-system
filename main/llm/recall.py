@@ -28,13 +28,11 @@ FULLTEXT_INDEX = "paper_fulltext"
 
 # default hyper parameters
 defaults = {
-    "k_full_bm25": 20,
-    "k_full_vec": 20,
+    "k_full_bm25": 40,
+    "k_full_vec": 40,
     "k_chunk_bm25": 10,
     "k_chunk_vec": 10,
     "sim_threshold": 0.30,
-    "hybrid_w_lex": 0.5,
-    "hybrid_w_sem": 0.5,
 }      
 
 # neo4j driver 
@@ -145,45 +143,49 @@ def recall_by_chunks(
     pool["bm25_score"]     = pool.get("bm25_score",    0.0).fillna(0.0)
     return pool
 
-# This uses Reciprocal Rank Fusion (RRF) score 
-# https://learn.microsoft.com/ja-jp/azure/search/hybrid-search-ranking
-# It adds weighted sum of BM25 and semantic on the entire query 
-# Chunk: for each paper, take the maximum BM25 / semantic score across all chunks, then form a weighted sum.
-# Final: add full-doc and chunk scores for a final hybrid score, then sort.
-def hybrid_rank(
+# https://learn.microsoft.com/en-us/azure/search/hybrid-search-ranking
+# https://docs.zilliz.com/docs/reranking-rrf
+# Here, it says small value like 60 works better. 
+def rrf_scores(df: pd.DataFrame, k_rrf: int = 60, rank_col: str = "rank"):
+    # 1 / (k + rank)
+    df = df.copy()
+    df["rrf"] = 1.0 / (k_rrf + df[rank_col])
+    return df[["pid", "rrf"]]
+
+from typing import List
+import pandas as pd
+# add this import:
+# (we assume fetch_metadata is already in this module)
+# from .recall import fetch_metadata  
+
+def rrf_fuse(
     full_bm25: pd.DataFrame,
-    full_vec: pd.DataFrame,
+    full_vec:  pd.DataFrame,
     chunk_pool: pd.DataFrame,
-    top_k: int = 60,
-    w_lex: float = defaults['hybrid_w_lex'],
-    w_sem: float = defaults['hybrid_w_sem']
+    k_rrf:    int = 60,
+    top_k:    int = 20,
 ) -> pd.DataFrame:
-    # merge full-text and embedding
-    full = pd.merge(
-        full_bm25[['pid','bm25_score']],
-        full_vec[['pid','semantic_score']],
-        on='pid', how='outer'
-    ).fillna(0)
-    # compute hybrid for full doc
-    full['hybrid_full'] = w_lex*full['bm25_score'] + w_sem*full['semantic_score']
+    # 1) compute per‐source RRF scores
+    sources = [
+        rrf_scores(full_bm25, k_rrf, "rank"),
+        rrf_scores(full_vec,   k_rrf, "rank"),
+    ]
+    for src in ("chunk_bm25", "chunk_vec"):
+        part = chunk_pool[chunk_pool.source == src]
+        if not part.empty:
+            sources.append(rrf_scores(part, k_rrf, "rank"))
 
-    # aggregate chunk-level scores: max per pid
-    agg = chunk_pool.groupby('pid').agg(
-        bm25_chunk=('bm25_score','max'),
-        sem_chunk=('semantic_score','max')
-    ).reset_index().fillna(0)
-    agg['hybrid_chunk'] = w_lex*agg['bm25_chunk'] + w_sem*agg['sem_chunk']
+    # 2) fuse by summing
+    fused = pd.concat(sources, ignore_index=True).groupby("pid", as_index=False)["rrf"].sum()
 
-    # join both
-    merged = pd.merge(
-        full[['pid','hybrid_full']],
-        agg[['pid','hybrid_chunk']],
-        on='pid', how='outer'
-    ).fillna(0)
-    merged['hybrid_score'] = merged['hybrid_full'] + merged['hybrid_chunk']
+    # 3) fetch metadata & filter out empty abstracts
+    meta       = fetch_metadata(fused["pid"].tolist())
+    valid_pids = meta.loc[meta["abstract"].str.strip() != "", "pid"]
 
-    return merged.sort_values('hybrid_score', ascending=False).head(top_k)
+    # 4) keep only valid pids and then the top_k by rrf
+    fused      = fused[fused["pid"].isin(valid_pids)]
 
+    return fused.sort_values("rrf", ascending=False).head(top_k)
 
 # After that it fetches paper IDs with title, abstract, authors and year. 
 # I have to think if abstract is null whats gonna happen. 
@@ -203,32 +205,11 @@ def fetch_metadata(pids: List[str]) -> pd.DataFrame:
         rows = sess.run(cypher, ids=pids).data()
     return pd.DataFrame(rows)
 
-def rrf_scores(df: pd.DataFrame, k_rrf: int = 60, rank_col: str = "rank"):
-    # 1 / (k + rank)
-    df = df.copy()
-    df["rrf"] = 1.0 / (k_rrf + df[rank_col])
-    return df[["pid", "rrf"]]
-
-def rrf_fuse(
-    full_bm25, full_vec, chunk_pool, k_rrf=60, top_k=60
-):
-    # prepare per‐source RRF tables
-    sources = [
-        rrf_scores(full_bm25, k_rrf, "rank"),
-        rrf_scores(full_vec,   k_rrf, "rank"),
-    ]
-    # for chunks, chunk_pool already has source and rank; split and transform
-    for source in ("chunk_bm25", "chunk_vec"):
-        df_src = chunk_pool[chunk_pool.source == source]
-        sources.append(rrf_scores(df_src, k_rrf, "rank"))
-    
-    # stack and sum
-    all_rrf = pd.concat(sources, ignore_index=True)
-    fused = all_rrf.groupby("pid", as_index=False)["rrf"].sum()
-    return fused.sort_values("rrf", ascending=False).head(top_k)
-
 __all__ = [
-    'embed',
-    'recall_fulltext', 'recall_vector', 'recall_by_chunks',
-    'hybrid_rank', 'fetch_metadata'
+    "embed",
+    "recall_fulltext",
+    "recall_vector",
+    "recall_by_chunks",
+    "rrf_fuse",
+    "fetch_metadata",
 ]
