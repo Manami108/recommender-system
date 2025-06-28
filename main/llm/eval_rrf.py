@@ -1,4 +1,4 @@
-# --- eval_ctx_rrf.py ---------------------------------------------------------
+# This is rrf reranking but no llm 
 from __future__ import annotations
 import os, json
 from pathlib import Path
@@ -21,9 +21,7 @@ from recall import (
     embed,
 )
 
-# --------------------------------------------------------------------------- #
-# Configuration
-# --------------------------------------------------------------------------- #
+# config
 TESTSET_PATH  = Path(os.getenv("TESTSET_PATH",
                      "/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020_references.jsonl"))
 MAX_CASES     = int(os.getenv("MAX_CASES", 100))
@@ -32,7 +30,7 @@ TOPK_LIST     = tuple(range(1, 21))
 TOKENIZER     = AutoTokenizer.from_pretrained(
                     "meta-llama/Meta-Llama-3.1-8B-Instruct", use_fast=True)
 
-# --------------------------------------------------------------------------- #
+# cosine similarity 
 def cosine_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return a @ b.T
 
@@ -105,7 +103,7 @@ def evaluate_case(
 
     return out
 
-# --------------------------------------------------------------------------- #
+# main
 def main() -> None:
     if not TESTSET_PATH.exists():
         raise FileNotFoundError(f"Testset not found at {TESTSET_PATH}")
@@ -123,10 +121,8 @@ def main() -> None:
         )
 
     metric_df = pd.DataFrame(rows)
-    out_csv   = Path(__file__).parent / "csv" / "metrics_rrf.csv"
-    out_csv.parent.mkdir(exist_ok=True)
-    metric_df.to_csv(out_csv, index=False)
-    print(f"Saved per-paragraph metrics → {out_csv}")
+    out_path = Path(__file__).parent / "csv" / "metrics_rrf.csv"
+    metric_df.to_csv(out_path, index=False)
 
     avg = metric_df.mean(numeric_only=True).round(4)
     print("\nAverage metrics (pure RRF):\n", avg)
@@ -136,7 +132,7 @@ def main() -> None:
         y = metric_df[[f"{prefix}@{k}" for k in ks]].mean().values
         plt.figure()
         plt.plot(ks, y, marker="o")
-        plt.title(f"{prefix}@k  (averaged over {len(metric_df)} paragraphs)")
+        plt.title(f"{prefix}@k vs k")
         plt.xlabel("k")
         plt.ylabel(prefix)
         plt.grid(True)
@@ -144,6 +140,5 @@ def main() -> None:
         plt.savefig(Path(__file__).parent / "eval" / f"{prefix.lower()}_rrf.png", dpi=200)
         plt.close()
 
-# --------------------------------------------------------------------------- #
 if __name__ == "__main__":
     main()

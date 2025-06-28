@@ -135,12 +135,12 @@ def main() -> None:
             [str(pid) for pid in rec.get("references", [])],
             rec.get("year")
         )
-        m["method"] = "bm25_hop_rerank"   # tag this run
+        m["method"] = "metrics_rrf_hop"   # tag this run
         rows.append(m)
 
     # 4) build a DataFrame and dump to CSV
     metric_df = pd.DataFrame(rows)
-    out_csv   = Path(__file__).parent / "csv" / "metrics_bm25_hop_rerank.csv"
+    out_csv   = Path(__file__).parent / "csv" / "metrics_rrf_hop.csv"
     metric_df.to_csv(out_csv, index=False)
     print(f"\nSaved per-paragraph metrics to {out_csv}")
 
@@ -158,7 +158,7 @@ def main() -> None:
         plt.title(f"{pref}@k vs k  (avg over {len(metric_df)} paragraphs)")
         plt.xlabel("k (# recommended papers)");   plt.ylabel(pref)
         plt.grid(True); plt.tight_layout()
-        plt.savefig(save_dir / f"{pref.lower()}_hop.png", dpi=200)
+        plt.savefig(save_dir / f"{pref.lower()}_rrf_hop.png", dpi=200)
         plt.close()
 
     print("\nAverage metrics over "
