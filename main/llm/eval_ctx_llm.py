@@ -1,5 +1,5 @@
 
-# This is evaluation code which considers 20 candidates and do embedding search as well
+# This is rrf reranking -> llm reranking 
 from __future__ import annotations
 import os
 import json
@@ -141,34 +141,31 @@ def evaluate_case(
 
 # main function
 # Runs evaluation over the test cases and prints the average metrics.
-import matplotlib
-matplotlib.use("Agg") 
-
+# main
 def main() -> None:
-    if not TESTSET_PATH.exists():
-        raise FileNotFoundError(f"Testset not found at {TESTSET_PATH}")
-
-    tests = pd.read_json(TESTSET_PATH, lines=True).head(MAX_CASES)
-
+    df = pd.read_json(TESTSET_PATH, lines=True).head(MAX_CASES)
     rows: list[dict] = []
-    for rec in tests.to_dict("records"):
-        rows.append(
-            evaluate_case(
-                rec["paragraph"],
-                [str(pid) for pid in rec.get("references", [])],
-                rec.get("year"),
-            )
+
+    # Single pass: evaluate each paragraph once
+    for rec in df.to_dict("records"):
+        m = evaluate_case(
+            rec["paragraph"],
+            [str(x) for x in rec.get("references", [])],
+            rec.get("year")
         )
+        m["method"] = "rrf_llm"     # or "bm25_full" as you prefer
+        rows.append(m)
 
+    # Build the DataFrame once
     metric_df = pd.DataFrame(rows)
-    out_path = Path(__file__).parent / "csv" / "metrics_rrf_llm.csv"
-    metric_df.to_csv(out_path, index=False)
 
-    avg = metric_df.mean(numeric_only=True).round(4)
-    print("\nAverage metrics (pure RRF):\n", avg)
+    # 1) Print averages
+    print("\nRRF + LLM (k=20) average metrics:\n")
+    print(metric_df.mean(numeric_only=True).round(4))
 
+    # 2) Plot
     ks = np.array(TOPK_LIST)
-    for prefix in ["P", "HR", "R", "NDCG"]:
+    for prefix in ["P","HR","R","NDCG"]:
         y = metric_df[[f"{prefix}@{k}" for k in ks]].mean().values
         plt.figure()
         plt.plot(ks, y, marker="o")
@@ -179,7 +176,12 @@ def main() -> None:
         plt.tight_layout()
         plt.savefig(Path(__file__).parent / "eval" / f"{prefix.lower()}_rrf_llm.png", dpi=200)
         plt.close()
+
+    # 3) Save CSV
+    out_path = Path(__file__).parent / "csv" / "metrics_rrf_llm.csv"
+    out_path.parent.mkdir(exist_ok=True)
+    metric_df.to_csv(out_path, index=False)
+
 if __name__ == "__main__":
     main()
-
 
