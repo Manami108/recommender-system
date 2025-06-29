@@ -28,7 +28,7 @@ from hop_reasoning import multi_hop_topic_citation_reasoning   # <<< hop >>>
 TESTSET_PATH = Path(os.getenv(
     "TESTSET_PATH",
     "/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020_references.jsonl"))
-MAX_CASES  = int(os.getenv("MAX_CASES", 5))
+MAX_CASES  = int(os.getenv("MAX_CASES", 2))
 TOPK_LIST  = tuple(range(1, 21))
 SIM_THRESH = 0.95
 
@@ -48,7 +48,8 @@ def cosine_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
 def evaluate_case(
     paragraph: str,
     gold_pids: List[str],
-    hop_top_n: int,                      # required first
+    hop_top_n: int,  
+    final_k:    int,                         # required first
     target_year: Optional[int] = None,   # defaulted second
 ) -> dict:
 
@@ -87,7 +88,7 @@ def evaluate_case(
         reranked = rerank_batch(
             paragraph,
             meta_pool[["pid", "title", "abstract"]],
-            k=LLM_TOPK,
+            k=final_k,
             max_candidates=len(meta_pool))
         final_ids = reranked.pid.tolist()
     except RerankError as e:
@@ -134,64 +135,76 @@ import matplotlib
 matplotlib.use("Agg")          # off-screen backend
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    logging.basicConfig(level=logging.INFO,
+                        format="%(levelname)s: %(message)s")
 
-    # load your testset
     df = pd.read_json(TESTSET_PATH, lines=True).head(MAX_CASES)
 
-    hop_values = [1, 3, 5, 10]      # hop limits to compare
-    sweep_rows = []
+    hop_values   = [1, 3, 5, 10]      # sweep this
+    rec_k_values = [3, 5, 10, 20]     # just for plotting
+    sweep_rows   = []                 # will hold one row per hop_n
 
     for hop_n in hop_values:
-        # run evaluation for each paragraph with this hop_n
-        rows = []
+        per_paragraph = []
         for rec in df.to_dict("records"):
             m = evaluate_case(
-                rec["paragraph"],
-                [str(pid) for pid in rec.get("references", [])],  # gold_pids
-                hop_n,                                             # hop_top_n
-                rec.get("year")                                    # target_year
-                )
-            rows.append(m)
+                paragraph   = rec["paragraph"],
+                gold_pids   = [str(pid) for pid in rec.get("references", [])],
+                hop_top_n   = hop_n,
+                final_k     = 20,            # always generate 20
+                target_year = rec.get("year")
+            )
+            per_paragraph.append(m)
 
-        metrics_df = pd.DataFrame(rows)
-        avg = metrics_df.mean(numeric_only=True)
+        avg = pd.DataFrame(per_paragraph).mean(numeric_only=True)
 
+        # extract just the ks we care about
         sweep_rows.append({
             "hop_n":   hop_n,
+            "P@3":     avg["P@3"],
+            "P@5":     avg["P@5"],
+            "P@10":    avg["P@10"],
             "P@20":    avg["P@20"],
+            "HR@3":    avg["HR@3"],
+            "HR@5":    avg["HR@5"],
+            "HR@10":   avg["HR@10"],
             "HR@20":   avg["HR@20"],
+            "R@3":     avg["R@3"],
+            "R@5":     avg["R@5"],
+            "R@10":    avg["R@10"],
             "R@20":    avg["R@20"],
+            "NDCG@3":  avg["NDCG@3"],
+            "NDCG@5":  avg["NDCG@5"],
+            "NDCG@10": avg["NDCG@10"],
             "NDCG@20": avg["NDCG@20"],
         })
 
-        print(f"\n=== hop_n = {hop_n} average ===")
-        print(avg[["P@20","HR@20","R@20","NDCG@20"]].round(4))
+        print(f"\n=== hop_n = {hop_n} averages ===")
+        print(avg[[f"P@{k}"   for k in rec_k_values] +
+                  [f"HR@{k}"  for k in rec_k_values] +
+                  [f"R@{k}"   for k in rec_k_values] +
+                  [f"NDCG@{k}"for k in rec_k_values]].round(4))
 
-    # compile sweep results
     sweep_df = pd.DataFrame(sweep_rows).set_index("hop_n")
 
-    # save CSV
-    csv_dir = Path(__file__).parent / "csv"
-    csv_dir.mkdir(exist_ok=True)
+    csv_dir = Path(__file__).parent / "csv";  csv_dir.mkdir(exist_ok=True)
     sweep_df.to_csv(csv_dir / "metrics_hop_sweep.csv")
 
-    # plot each metric vs hop_n
-    eval_dir = Path(__file__).parent / "eval"
-    eval_dir.mkdir(exist_ok=True)
+    eval_dir = Path(__file__).parent / "eval"; eval_dir.mkdir(exist_ok=True)
 
-    for metric in ["P@20","HR@20","R@20","NDCG@20"]:
-        plt.figure()
-        plt.plot(sweep_df.index, sweep_df[metric], marker="o")
-        plt.title(f"{metric} vs hop_n")
-        plt.xlabel("hop_n")
-        plt.ylabel(metric)
-        plt.grid(True)
-        plt.tight_layout()
-
-        fname = metric.lower().replace("@", "_at_") + "_vs_hop.png"
-        plt.savefig(eval_dir / fname, dpi=200)
-        plt.close()
+    for rec_k in rec_k_values:
+        for metric in ["P", "HR", "R", "NDCG"]:
+            col = f"{metric}@{rec_k}"
+            plt.figure()
+            plt.plot(sweep_df.index, sweep_df[col], marker="o", ms=4)
+            plt.title(f"{metric}@{rec_k} vs hop_n")
+            plt.xlabel("hop_n")
+            plt.ylabel(metric)
+            plt.grid(True)
+            plt.tight_layout()
+            fname = f"{metric.lower()}_at_{rec_k}_vs_hop.png"
+            plt.savefig(eval_dir / fname, dpi=200)
+            plt.close()
 
 if __name__ == "__main__":
     main()
