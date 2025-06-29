@@ -34,7 +34,7 @@ SIM_THRESH = 0.95
 
 RRF_TOPK       = 20  # keep top 20 seeds after RRF fusion
 # HOP_TOP_N      = 3   # retrieve up to 20 hop papers per seed
-FINAL_POOL_CAP = 60  # cap total pool size before final LLM
+FINAL_POOL_CAP = 200  # cap total pool size before final LLM
 LLM_TOPK       = 20  # final list size
 
 TOKENIZER = AutoTokenizer.from_pretrained(
@@ -123,12 +123,13 @@ def evaluate_case(
     out, n_rel = {}, len(ref_ids)
     for k in TOPK_LIST:
         topk = hits[:k]
-        out[f"P@{k}"]  = sum(topk)/k
-        out[f"HR@{k}"] = float(any(topk))
-        out[f"R@{k}"]  = sum(topk)/n_rel if n_rel else 0.0
-        dcg  = sum(r/math.log2(i+2) for i,r in enumerate(topk))
-        idcg = sum(1/math.log2(i+2) for i in range(min(n_rel,k)))
-        out[f"NDCG@{k}"] = dcg/idcg if idcg else 0.0
+        p_at_k = sum(topk) / k
+        hr_at_k = float(any(topk))
+        r_at_k = sum(topk) / n_rel if n_rel else 0.0
+        dcg = sum(rel / np.log2(idx + 2) for idx, rel in enumerate(topk))
+        idcg = sum(1 / np.log2(i + 2) for i in range(min(n_rel, k)))
+        ndcg = (dcg / idcg) if idcg else 0.0
+        out.update({f"P@{k}": p_at_k, f"HR@{k}": hr_at_k, f"R@{k}": r_at_k, f"NDCG@{k}": ndcg})
     return out
 
 import matplotlib

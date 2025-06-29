@@ -38,7 +38,6 @@ Q: Below is an introduction paragraph and a list of candidates. Identify the par
      {"pid":"<paper_id>", "score":<score>},
      … 
    ]
-Let’s think step by step:
 <|end_of_text|>
 ```
 
