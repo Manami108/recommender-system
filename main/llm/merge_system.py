@@ -36,7 +36,7 @@ for metric in ["P","R","HR","NDCG"]:
         .pivot(index="k", columns="method", values="value")
     )
     plt.figure()
-    dfm.plot(marker="o", ax=plt.gca())
+    dfm.plot(marker="o", markersize=4, ax=plt.gca())
     plt.title(f"{metric}@k comparison")
     plt.xlabel("k")
     plt.ylabel(metric)
