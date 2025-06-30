@@ -77,7 +77,17 @@ def evaluate_case(
     # this is hop expansions
     hop_df   = multi_hop_topic_citation_reasoning(seed_ids, top_n=HOP_TOP_N)  # <<< hop >>>
     union_ids = list(dict.fromkeys(seed_ids + hop_df.pid.tolist()))[:FINAL_POOL_CAP]  # <<< hop >>>
-    meta_pool = fetch_metadata(union_ids).dropna(subset=["abstract"])
+    raw_meta = fetch_metadata(union_ids).dropna(subset=["abstract"])
+    if target_year is not None:
+        raw_meta = raw_meta[raw_meta.year < target_year]
+
+    # re‐order to match `union_ids`
+    meta_pool = (
+        raw_meta.set_index("pid")
+                .loc[union_ids]           # select & reorder
+                .reset_index()            # bring pid back as a column
+    )
+
     if target_year is not None:
         meta_pool = meta_pool[meta_pool.year < target_year]
 
@@ -85,13 +95,15 @@ def evaluate_case(
     try:
         reranked = rerank_batch(
             paragraph,
-            meta_pool[["pid", "title", "abstract"]],
+            meta_pool[["pid","title","abstract"]],
             k=LLM_TOPK,
-            max_candidates=len(meta_pool))
-        final_ids = reranked.pid.tolist()
+            max_candidates=len(meta_pool)
+            )
+        final_ids = reranked.pid.tolist()  
     except RerankError as e:
         logging.warning("LLM rerank failed → fallback order (%s)", e)
         final_ids = meta_pool.pid.head(LLM_TOPK).tolist()
+
 
     # embed references & predicted candidates
     # Calculates cosine similarities between reranked abstracts and true references.
