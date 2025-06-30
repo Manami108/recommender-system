@@ -69,48 +69,55 @@ def evaluate_case(
     
     # Ask the LLM to rerank your 20 candidates by relevance to the paragraph.
     try:
-        reranked = rerank_batch(
+        llm_df = rerank_batch(
             paragraph,
-            merged[["pid","title","abstract"]],
-            k=20,
+            merged[["pid", "title", "abstract"]],
+            k=20,                   # let the LLM see / rank all 20
+        )                           # → columns: pid, score
+
+        # add BM25 score for deterministic tie-breaking
+        llm_df = llm_df.merge(
+            merged[["pid", "bm25_score"]],
+            on="pid",
+            how="left",
         )
-        final_pids = reranked["pid"].tolist()
-    # On failure, just keep the original BM25 ordering.
+
+        # sort: 1) LLM score ↓  2) bm25_score ↓
+        llm_df = llm_df.sort_values(
+            ["score", "bm25_score"],
+            ascending=[False, False],
+            kind="mergesort",
+        )
+
+        predicted = llm_df["pid"].tolist()
+
     except RerankError as e:
-        print("⚠️ Rerank failed, fallback to BM25 order:", e)
-        final_pids = merged["pid"].tolist()
+        print("⚠️  Rerank failed, falling back to BM25 order:", e)
+        predicted = merged["pid"].tolist()
 
     # fetch and embed all the true reference papers’ abstracts. 
     # If none have valid abstracts, create a zero-matrix so that nothing is ever “similar.”
     ref_meta = fetch_metadata([str(p) for p in true_pids]).dropna(subset=["abstract"])
-    ref_ids  = list(ref_meta["pid"])
-    ref_embs = np.stack([embed(a) for a in ref_meta["abstract"]]) if ref_ids else np.zeros((0,768))
+    ref_ids  = ref_meta["pid"].tolist()
+    ref_embs = np.stack([embed(a) for a in ref_meta["abstract"]]) if ref_ids else np.zeros((0, 768))
 
-    # Embed each candidate’s abstract
-    cand_meta = merged.set_index("pid").loc[final_pids]
-    cand_absts = cand_meta["abstract"].tolist()
-    cand_embs  = np.stack([embed(a) for a in cand_absts])
+    cand_meta  = merged.set_index("pid").loc[predicted]
+    cand_embs  = np.stack([embed(a) for a in cand_meta["abstract"]])
 
     # Keep the references still unmatched 
     # If the similarity is more than 0.95, mark that candidate as a hit and remove the reference from future matching.
-    sims      = cosine_matrix(cand_embs, ref_embs) if ref_ids else np.zeros((len(final_pids),0))
-    unmatched = set(range(len(ref_ids)))
-    hits      = []
 
-    for i in range(len(final_pids)):
+    sims = cosine_matrix(cand_embs, ref_embs) if ref_ids else np.zeros((len(predicted), 0))
+    unmatched, hits = set(range(len(ref_ids))), []
+    for i in range(len(predicted)):
         if not unmatched:
             hits.append(False)
             continue
-
-        # look only at still‐unmatched references
-        ref_idxs = list(unmatched)
-        sim_vals = sims[i, ref_idxs]
-        j = sim_vals.argmax()
-        if sim_vals[j] >= SIM_THRESHOLD:
-
-            # mark both candidate as hit, and remove that ref
+        idxs = list(unmatched)
+        j = sims[i, idxs].argmax()
+        if sims[i, idxs][j] >= SIM_THRESHOLD:
             hits.append(True)
-            unmatched.remove(ref_idxs[j])
+            unmatched.remove(idxs[j])
         else:
             hits.append(False)
 

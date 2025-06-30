@@ -1,6 +1,7 @@
 
 # This is rrf reranking -> llm reranking 
 # Need to change prompt png, method, and csv and prompt path in rerank_llm
+
 from __future__ import annotations
 import os
 import json
@@ -24,7 +25,7 @@ import matplotlib.pyplot as plt
 
 
 # config
-TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020_references.jsonl"))
+TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset1.jsonl"))
 MAX_CASES     = int(os.getenv("MAX_CASES", 100)) # Number of test cases to evaluate
 SIM_THRESHOLD = float(os.getenv("SIM_THRESHOLD", 0.95))
 TOPK_LIST     = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20) # K-values for evaluation metrics
@@ -71,11 +72,13 @@ def evaluate_case(
                 inplace=True)
         
     pool = rrf_fuse(
-        full_bm25,             # only pid + rank
-        full_vec,              # only pid + rank
-        chunk_pool,            # pid + rank + source
+        full_bm25,
+        full_vec,
+        chunk_pool,
         top_k=20,
-    )
+    ).reset_index(drop=True)  
+
+    pool["rrf_rank"] = np.arange(len(pool))
 
     # and extract pids for reranking
     cand = fetch_metadata(pool["pid"].tolist())[["pid", "title", "abstract", "year"]]
@@ -86,11 +89,30 @@ def evaluate_case(
 
     # 4. rerank via LLM scoring
     try:
-        reranked = rerank_batch(paragraph, cand[["pid", "title", "abstract"]], k=20)
-        predicted = reranked["pid"].tolist()
+        llm_df = rerank_batch(paragraph,            # ← returns pid, score
+                              cand[["pid", "title", "abstract"]],
+                              k=20)                 # keep up to 20
+
+        # bring RRF metrics in for tie-breaking
+        llm_df = (
+            llm_df
+            .merge(pool[["pid", "rrf_rank"]], on="pid", how="left")
+        )
+
+        # sort: 1) LLM score ↓  2) rrf_rank ↑
+        llm_df = llm_df.sort_values(
+            by=["score", "rrf_rank"],
+            ascending=[False, True],
+            kind="mergesort"
+        )
+        # print(llm_df[["pid", "score", "rrf_rank"]].to_string(index=False))
+
+        predicted = llm_df["pid"].tolist()
+
     except RerankError as e:
         print("⚠️  Rerank failed, using RRF order:", e)
-        predicted = cand["pid"].tolist()
+        # pool is already sorted by rrf_score desc inside rrf_fuse
+        predicted = pool["pid"].tolist()
 
     # embed references & predicted candidates
     # Calculates cosine similarities between reranked abstracts and true references.
@@ -150,7 +172,7 @@ def main() -> None:
             [str(x) for x in rec.get("references", [])],
             rec.get("year")
         )
-        m["method"] = "rrf_llm_working2"     # or "bm25_full" as you prefer
+        m["method"] = "rrf_llm_working1"     # or "bm25_full" as you prefer
         rows.append(m)
 
     # Build the DataFrame once
@@ -171,11 +193,11 @@ def main() -> None:
         plt.ylabel(prefix)
         plt.grid(True)
         plt.tight_layout()
-        plt.savefig(Path(__file__).parent / "eval" / f"{prefix.lower()}_rrf_llm_working2.png", dpi=200)
+        plt.savefig(Path(__file__).parent / "eval" / f"{prefix.lower()}_rrf_llm_working1.png", dpi=200)
         plt.close()
 
     # 3) Save CSV
-    out_path = Path(__file__).parent / "csv" / "metrics_rrf_llm_working2.csv"
+    out_path = Path(__file__).parent / "csv1" / "1metrics_rrf_llm_working1.csv"
     out_path.parent.mkdir(exist_ok=True)
     metric_df.to_csv(out_path, index=False)
 
