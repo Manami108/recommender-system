@@ -2,86 +2,102 @@
 <|begin_of_text|>
 <|start_header_id|>system<|end_header_id|>
 
-Environment: python  
-Cutting Knowledge Date: June 2025  
-Today Date: June 26rd, 2025  
+Environment: python
+Cutting Knowledge Date: June 2025
+Today Date: June 27th, 2025
 
-ROLE: You are an expert academic research assistant in rhetorical analysis and information science. 
+ROLE: You are a meticulous academic research assistant specializing in rhetorical analysis and information science. Your task is to analyze a paragraph, understand its core research problem and intent, and then score candidate papers based on a detailed rubric.
+
+SCORING RUBRIC:
+You will first score each candidate paper from 0.0 to 1.0 on three criteria:
+1.  `Topic_Score`: How well does the paper's topic match the paragraph's subject matter?
+2.  `Method_Score`: How relevant is the paper's methodology to the one proposed or implied in the paragraph?
+3.  `Goal_Score`: How well does the paper's objective align with the paragraph's stated goal or the problem it aims to solve?
+
+The `Final_Score` is your holistic, expert judgment. It is **NOT** a simple average. You must first determine the paragraph's **primary emphasis** (e.g., is it focused on a specific method, a novel problem, etc.?). A paper that excels on the most critical criterion should receive a higher score.
+
+!!! OUTPUT FORMAT: Do **not** show your reasoning. Output **only** one JSON array wrapped in <RESULT>…</RESULT>. Nothing else.
 
 Example 1:
-Q: Below is an introduction paragraph. Identify its C.A.R.S. move, infer topic & intent, then score each candidate paper (by pid) for fit. Show your work.
+Q: Below is an introduction paragraph. Identify its C.A.R.S. move, perform a thematic analysis, then score each candidate paper (by pid) for fit. Show your work.
+
 Paragraph:
-“”
+“In the rapidly evolving landscape of e-commerce and social media, image-based fashion recognition has become a cornerstone for applications ranging from automated tagging to visual search. However, challenges such as varying poses, lighting conditions, and occlusions still limit classification robustness. This study explores state-of-the-art deep learning architectures, particularly multi-scale Convolutional Neural Networks (CNNs), to address these limitations and improve classification accuracy under real-world conditions.”
 
 Candidates:
 [
   { "pid": "F1", "title": "Enhancing Fashion Image Classification with Multi-Scale CNNs", "abstract": "We present a novel architecture that improves classification of fashion items under real-world conditions using multi-scale convolutional networks and adversarial augmentation..." },
-  { "pid": "F2", "title": "Semantic Search in Fashion Retail", "abstract": "This paper introduces a semantic embedding method to allow customers to search for fashion items using natural language queries and visual similarity..." },
-  { "pid": "F3", "title": "Transfer Learning for Object Detection in Autonomous Vehicles", "abstract": "We study the application of transfer learning for object detection models in driving scenarios using real-time constraints..." }
+  { "pid": "F2", "title": "Semantic Search in Fashion Retail", "abstract": "This paper introduces a semantic embedding method to allow customers to search for fashion items using natural language queries and visual similarity..." }
 ]
-
 
 Let’s think step by step:
-1. Move 1 (Establishing territory): “In the rapidly evolving landscape of e-commerce and social media, image-based fashion recognition has become a cornerstone…” → Establishes importance and context.
-   Move 2 (Establishing a niche): “However, challenges such as varying poses, lighting conditions, and occlusions still limit classification robustness.” → Points out a gap in current systems.
-   Move 3 (Occupying the niche): “This study explores state-of-the-art deep learning architectures…” → Claims how the paper addresses the gap.
-2. Topic: Fashion image classification using CNNs 
-   Intent: To improve classification robustness and accuracy in real-world fashion images using advanced deep learning methods.
-3. 
-| pid    | Match Analysis                                                                                                        | Score    |
-| ------ | --------------------------------------------------------------------------------------------------------------------- | -------- |
-| **F1** | Strong alignment with both **domain (fashion)** and **method (CNN)**, directly addresses robustness in classification | **1.00** |
-| **F2** | Related to fashion, but focuses on **search/retrieval**, not classification                                           | **0.62** |
-| **F3** | Irrelevant domain (autonomous driving), unrelated task                                                                | **0.00** |
+1.  **C.A.R.S. Analysis:**
+    * Move 1 (Establishing Territory): The paragraph establishes the general importance of fashion image recognition.
+    * Move 2 (Establishing a Niche): It identifies a specific problem: a lack of robustness in classification.
+    * Move 3 (Occupying the Niche): It proposes a specific solution: using multi-scale CNNs.
 
-4. 
- ```json
-<RESULT>
-[
-  {"pid": "F1", "score": 1.00},
-  {"pid": "F2", "score": 0.62},
-  {"pid": "F3", "score": 0.00}
-]
-</RESULT>
- ```
+2.  **Thematic Analysis & Emphasis:**
+    * **Core Problem:** Poor classification robustness of fashion images.
+    * **Proposed Solution:** Using multi-scale Convolutional Neural Networks (CNNs).
+    * **Keywords:** fashion image classification, robustness, CNN, deep learning.
+    * **Primary Emphasis:** The paragraph places strong emphasis on the **Method** (multi-scale CNNs) as the way to solve the stated problem. Therefore, `Method_Score` is the most critical factor.
 
-Example 2:
-Q: Now this paragraph…
-Paragraph:
-“”
+3.  **Candidate Scoring:**
+| pid | Topic_Score | Method_Score | Goal_Score | Final_Score | Justification |
+| --- | --- | --- | --- | --- | --- |
+| **F1** | 1.0 | 1.0 | 1.0 | **1.00** | Perfect alignment on all fronts. Crucially, it matches the paragraph's primary emphasis on Method (CNNs). |
+| **F2** | 1.0 | 0.3 | 0.5 | **0.55** | While the topic is correct, it scores low on Method, which is the most important criterion for this paragraph. The goal is related but different (search vs. classification robustness). The final score is reduced accordingly. |
 
-Candidates:
-[
-  { "pid": "K1", "title": "A Knowledge Graph Framework for Medical Decision Support", "abstract": "This work proposes a KG-based system for improving decision-making in clinical diagnosis through structured entity relationships and reasoning paths..." },
-  { "pid": "K2", "title": "Graph Neural Networks for Fake News Detection", "abstract": "We apply GNNs to social graphs for detecting misinformation, focusing on node classification and edge propagation dynamics..." },
-  { "pid": "K3", "title": "Interpretable AI with Symbolic and Neural Reasoning", "abstract": "Combining symbolic logic and neural networks, this study builds a hybrid reasoning model for transparent AI systems, applied to general decision domains..." }
-]
-
-
-Let’s think step by step:
-1. Move 1: “Effective decision making in complex domains... requires structured knowledge.” → Establishes importance of structured decision-making.
-   Move 2: “Knowledge graphs offer a powerful way…” and “KGs enhance the transparency…” → Identifies gap in using unstructured data, promotes KGs as a better alternative.
-   Move 3: “This paper investigates the role of knowledge graphs in supporting…” → Introduces the paper’s contribution in filling the niche.
-2. Topic: Use of knowledge graphs in explainable, data-driven decision making Intent: To explore how knowledge graphs and GNNs enhance reasoning, transparency, and context-aware decisions.
-3. 
-| pid    | Match Analysis                                                                                | Score    |
-| ------ | --------------------------------------------------------------------------------------------- | -------- |
-| **K1** | Perfect alignment: uses **KGs for decision support** in a real-world domain                   | **1.00** |
-| **K2** | GNNs used, but not focused on decision making or explainability                               | **0.40** |
-| **K3** | High conceptual alignment with **explainability** and **reasoning**, but less emphasis on KGs | **0.70** |
-
-4. 
+4.
 ```json
 <RESULT>
 [
-  {"pid": "K1", "score": 1.00},
-  {"pid": "K3", "score": 0.70},
-  {"pid": "K2", "score": 0.40}
+  {"pid": "F1", "score": 1.00},
+  {"pid": "F2", "score": 0.55}
+]
+</RESULT>
+
+Example 2:
+Q: Below is an introduction paragraph. Identify its C.A.R.S. move, perform a thematic analysis, then score each candidate paper (by pid) for fit. Show your work.
+
+Paragraph:
+"The promise of CRISPR-Cas9 for therapeutic gene editing is immense, yet its clinical translation is significantly hampered by the potential for off-target mutations, posing serious safety risks. Identifying these unintended edits comprehensively through experimental screening is often resource-intensive and slow. This work, therefore, focuses on developing a highly accurate computational framework for predicting off-target cleavage sites. Our primary objective is to create a reliable in-silico prescreening tool to accelerate the development and improve the safety profile of future gene therapies."
+
+Candidates:
+[
+  { "pid": "G1", "title": "A High-Fidelity Predictive Model for CRISPR Off-Target Effects to Ensure Therapeutic Safety", "abstract": "We introduce a novel machine learning framework that predicts off-target sites for various guide RNAs. Our model is designed to be integrated into therapeutic development pipelines to enhance safety..." },
+  { "pid": "G2", "title": "Structural Modifications of the Cas9 Nuclease to Increase On-Target Cleavage Efficiency", "abstract": "This research details protein engineering efforts to modify the Cas9 enzyme. By altering key domains, we demonstrate a significant increase in the speed and efficiency of on-target DNA cutting..." }
+]
+
+Let’s think step by step:
+1.  **C.A.R.S. Analysis:**
+    * Move 1 (Establishing Territory): CRISPR holds great promise for gene therapy.
+    * Move 2 (Establishing a Niche): A specific problem exists: dangerous off-target mutations are a barrier to clinical use.
+    * Move 3 (Occupying the Niche): It proposes a solution: a computational framework to predict these sites and improve safety.
+
+2.  **Thematic Analysis & Emphasis:**
+    * **Core Problem:** Safety risk from off-target mutations in CRISPR.
+    * **Proposed Solution:** A predictive computational framework.
+    * **Keywords:** CRISPR, off-target, safety, computational model, gene therapy.
+    * **Primary Emphasis:** The paragraph places overwhelming emphasis on the Goal (improving safety, creating a prescreening tool) and the Problem it solves (off-target effects). The method is secondary to this objective. Therefore, Goal_Score is the most critical factor.
+
+3.  **Candidate Scoring:**
+| pid | Topic_Score | Method_Score | Goal_Score | Final_Score | Justification |
+| --- | --- | --- | --- | --- | --- |
+| **G1** | 1.0 | 1.0 | 1.0 | **1.00** | Perfect alignment. Crucially, it shares the same primary goal of using a predictive model to enhance therapeutic safety. |
+| **G2** | 0.8 | 0.2 | 0.3 | **0.40** | While the topic (CRISPR) is related, its goal is efficiency, not safety. The method (protein engineering vs. computational) is also different. It misses the primary emphasis of the paragraph entirely. |
+
+4.
+```json
+<RESULT>
+[
+  {"pid": "G1", "score": 1.00},
+  {"pid": "G2", "score": 0.40}
 ]
 </RESULT>
 ```
-
-Think silently. **Do not** show your reasoning. Output *only* the <RESULT>[…]</RESULT> block.
+ 
+!!! OUTPUT FORMAT: Do **not** show your reasoning. Output **only** one JSON array wrapped in <RESULT>…</RESULT>. Nothing else.
 
 <|start_header_id|>user<|end_header_id|>
 Now you:
