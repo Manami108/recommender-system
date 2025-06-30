@@ -16,44 +16,33 @@ driver = GraphDatabase.driver(
 # hop 2: topic -> paper -> topic -> paper
 # hop 1: seed -> cites -> other 
 # So when i say two hop max, include all
-def multi_hop_topic_citation_reasoning(
-    pids: list[str],
-    max_topic_hops: int = 2,
-    top_n: int = 50
-) -> pd.DataFrame:
-    """
-    Hybrid multi-hop reasoning over Topic/FoS shared nodes and citation edges.
-
-    - Topic/FoS hops:
-      * Hop 1: seed → Topic/FoS → other papers
-      * Hop 2: seed → Topic/FoS → intermediate → Topic/FoS → other papers //maybe unneccesary 
-    - Citation hop (one hop in either direction): seed ↔ CITES ↔ other papers
-
-    Returns a DataFrame with columns:
-        pid, title, year, hop (1 or 2), shared_count, src ('topic' or 'cite')
-    """
+def multi_hop_topic_citation_reasoning(pids: list[str], top_n: int = 50) -> pd.DataFrame:
     if not pids:
-        return pd.DataFrame(columns=["pid","title","year","hop","shared_count","src"])
+        return pd.DataFrame(...)
+    # Returns papers connected to any seed via:
+    #   - Topic/FoS hops (shared_count = # shared topics)
+    #   - Citation hops (shared_count = 1)
+    # Papers with BOTH a topic-hop AND a citation-hop get highest priority.
 
     results = []
     with driver.session() as session:
-        # Topic/FoS Hop 1
+        # Topic/FoS hop
         topic1 = session.run(
             '''
             UNWIND $pids AS seed_id
-            MATCH (seed:Paper {id: seed_id})-[:HAS_TOPIC|:HAS_FOS]->(t)<-[:HAS_TOPIC|:HAS_FOS]-(other:Paper)
+            MATCH (seed:Paper {id: seed_id})-[:HAS_TOPIC|HAS_FOS]->(t)<-[:HAS_TOPIC|HAS_FOS]-(other:Paper)
             WHERE other.id <> seed_id AND NOT other.id IN $pids
             WITH other, COUNT(DISTINCT t) AS shared_count
             RETURN other.id AS pid,
                    other.title AS title,
                    other.year AS year,
-                   1 AS hop,
                    shared_count,
                    'topic' AS src
             ORDER BY shared_count DESC, year DESC
             LIMIT $top_n
-            '''
-        , pids=pids, top_n=top_n).data()
+            ''',
+            pids=pids, top_n=top_n
+        ).data()
         results += topic1
 
         # Citation hop
@@ -69,14 +58,12 @@ def multi_hop_topic_citation_reasoning(
             RETURN other.id AS pid,
                    other.title AS title,
                    other.year AS year,
-                   1 AS hop,
                    1 AS shared_count,
                    'cite' AS src
             ORDER BY year DESC
             LIMIT $top_n
             ''',
-            pids=pids,
-            top_n=top_n
+            pids=pids, top_n=top_n
         ).data()
         results += cite
 
@@ -106,16 +93,27 @@ def multi_hop_topic_citation_reasoning(
     if df.empty:
         return df
 
-    # Keep first occurrence per pid, sorted by hop then by shared_count
-    df = (
-        df.sort_values(['hop','shared_count'], ascending=[True, False])
-          .drop_duplicates('pid')
-          .reset_index(drop=True)
-    )
-    return df
+    # flag topic vs cite, aggregate shared_count if topic appears multiple times
+    df["topic_flag"] = (df["src"] == "topic").astype(int)
+    df["cite_flag"] = (df["src"] == "cite").astype(int)
 
-# Example usage:
-# from hop_reasoning import multi_hop_topic_citation_reasoning
-# seeds = ['paper1', 'paper2']
-# df = multi_hop_topic_citation_reasoning(seeds)
-# print(df)
+    agg = (
+        df.groupby(["pid","title","year"], as_index=False)
+          .agg({
+              "shared_count": "sum",      # for topic: total shared; for cite: sum of 1s
+              "topic_flag": "max",
+              "cite_flag": "max"
+          })
+    )
+
+    # define priority: 2 = both, 1 = either-only
+    agg["priority"] = agg["topic_flag"] + agg["cite_flag"]
+
+    # final sort: priority → shared_count → year
+    agg = agg.sort_values(
+        ["priority","shared_count","year"],
+        ascending=[False, False, False]
+    ).reset_index(drop=True)
+
+    # drop helper columns if you like
+    return agg[["pid","title","year","shared_count"]]

@@ -161,7 +161,7 @@ def main() -> None:
             [str(pid) for pid in rec.get("references", [])],
             rec.get("year")
         )
-        m["method"] = "bm25_full_llm"  
+        m["method"] = "bm25_llm"  
         rows.append(m)
 
     for prefix in ["P", "HR", "R", "NDCG"]:
@@ -178,15 +178,15 @@ def main() -> None:
         plt.show()
 
         # save and close
-        plt.savefig(Path(__file__).parent / "eval" / f"{prefix.lower()}_atk.png", dpi=200)
+        plt.savefig(Path(__file__).parent / "eval" / f"{prefix.lower()}_bm25_llm.png", dpi=200)
         plt.close()
 
     avg = pd.DataFrame(metrics).mean(numeric_only=True)
-    print("\nEvaluation with RRF + LLM scoring - avg metrics:\n", avg.round(4))
+    print("\nEvaluation with BM25 + LLM scoring - avg metrics:\n", avg.round(4))
 
     # build DataFrame and write to CSV
     metric_df = pd.DataFrame(rows)
-    out_csv   = Path(__file__).parent / "csv" / "metrics_bm25_full_llm.csv"
+    out_csv   = Path(__file__).parent / "csv" / "metrics_bm25_llm.csv"
     metric_df.to_csv(out_csv, index=False)
     print(f"\nSaved per‐paragraph metrics to {out_csv}")
 

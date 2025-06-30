@@ -3,11 +3,10 @@ import matplotlib.pyplot as plt
 
 # 1) load all CSVs
 files = [
-    "metrics_bm25_full.csv",
-    "metrics_bm25_full_llm.csv",
+    "metrics_bm25.csv",
+    "metrics_bm25_llm.csv",
     "metrics_rrf.csv",
     "metrics_rrf_llm.csv",
-    # "metrics_rrf_hop_llm.csv",
 ]
 dfs = [pd.read_csv(f"./csv/{fn}") for fn in files]
 
@@ -44,6 +43,3 @@ for metric in ["P","R","HR","NDCG"]:
     plt.tight_layout()
     plt.savefig(f"./eval/{metric.lower()}_all_methods.png", dpi=200)
     plt.close()
-
-
-

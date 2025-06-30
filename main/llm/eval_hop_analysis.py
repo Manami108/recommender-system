@@ -1,4 +1,5 @@
-# eval_rrf_llm_hop.py  (20 RRF seeds → hop → LLM top-20)
+# before you run this code, lets make sure rerank_llm is working 3. 
+# Change png (3 parts) name 
 
 from __future__ import annotations
 import os, math, logging
@@ -28,12 +29,12 @@ from hop_reasoning import multi_hop_topic_citation_reasoning   # <<< hop >>>
 TESTSET_PATH = Path(os.getenv(
     "TESTSET_PATH",
     "/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020_references.jsonl"))
-MAX_CASES  = int(os.getenv("MAX_CASES", 2))
+MAX_CASES  = int(os.getenv("MAX_CASES", 100))
 TOPK_LIST  = tuple(range(1, 21))
 SIM_THRESH = 0.95
 
 RRF_TOPK       = 20  # keep top 20 seeds after RRF fusion
-# HOP_TOP_N      = 3   # retrieve up to 20 hop papers per seed
+HOP_TOP_N      = 1   # retrieve up to 20 hop papers per seed
 FINAL_POOL_CAP = 200  # cap total pool size before final LLM
 LLM_TOPK       = 20  # final list size
 
@@ -48,9 +49,7 @@ def cosine_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
 def evaluate_case(
     paragraph: str,
     gold_pids: List[str],
-    hop_top_n: int,  
-    final_k:    int,                         # required first
-    target_year: Optional[int] = None,   # defaulted second
+    target_year: Optional[int] = None,
 ) -> dict:
 
     # take the raw paragraph, clean it (lower-casing, removing punctuation/stopwords, etc.), 
@@ -77,9 +76,19 @@ def evaluate_case(
     seed_ids = seeds_df.pid.tolist()
 
     # this is hop expansions
-    hop_df    = multi_hop_topic_citation_reasoning(seed_ids, top_n=hop_top_n)
+    hop_df   = multi_hop_topic_citation_reasoning(seed_ids, top_n=HOP_TOP_N)  # <<< hop >>>
     union_ids = list(dict.fromkeys(seed_ids + hop_df.pid.tolist()))[:FINAL_POOL_CAP]  # <<< hop >>>
-    meta_pool = fetch_metadata(union_ids).dropna(subset=["abstract"])
+    raw_meta = fetch_metadata(union_ids).dropna(subset=["abstract"])
+    if target_year is not None:
+        raw_meta = raw_meta[raw_meta.year < target_year]
+
+    # re‐order to match `union_ids`
+    meta_pool = (
+        raw_meta.set_index("pid")
+                .loc[union_ids]           # select & reorder
+                .reset_index()            # bring pid back as a column
+    )
+
     if target_year is not None:
         meta_pool = meta_pool[meta_pool.year < target_year]
 
@@ -87,13 +96,15 @@ def evaluate_case(
     try:
         reranked = rerank_batch(
             paragraph,
-            meta_pool[["pid", "title", "abstract"]],
-            k=final_k,
-            max_candidates=len(meta_pool))
-        final_ids = reranked.pid.tolist()
+            meta_pool[["pid","title","abstract"]],
+            k=LLM_TOPK,
+            max_candidates=len(meta_pool)
+            )
+        final_ids = reranked.pid.tolist()  
     except RerankError as e:
         logging.warning("LLM rerank failed → fallback order (%s)", e)
         final_ids = meta_pool.pid.head(LLM_TOPK).tolist()
+
 
     # embed references & predicted candidates
     # Calculates cosine similarities between reranked abstracts and true references.
@@ -123,89 +134,60 @@ def evaluate_case(
     out, n_rel = {}, len(ref_ids)
     for k in TOPK_LIST:
         topk = hits[:k]
-        p_at_k = sum(topk) / k
-        hr_at_k = float(any(topk))
-        r_at_k = sum(topk) / n_rel if n_rel else 0.0
-        dcg = sum(rel / np.log2(idx + 2) for idx, rel in enumerate(topk))
-        idcg = sum(1 / np.log2(i + 2) for i in range(min(n_rel, k)))
-        ndcg = (dcg / idcg) if idcg else 0.0
-        out.update({f"P@{k}": p_at_k, f"HR@{k}": hr_at_k, f"R@{k}": r_at_k, f"NDCG@{k}": ndcg})
+        out[f"P@{k}"]  = sum(topk)/k
+        out[f"HR@{k}"] = float(any(topk))
+        out[f"R@{k}"]  = sum(topk)/n_rel if n_rel else 0.0
+        dcg  = sum(r/math.log2(i+2) for i,r in enumerate(topk))
+        idcg = sum(1/math.log2(i+2) for i in range(min(n_rel,k)))
+        out[f"NDCG@{k}"] = dcg/idcg if idcg else 0.0
     return out
 
 import matplotlib
 matplotlib.use("Agg")          # off-screen backend
 
+# main
 def main() -> None:
-    logging.basicConfig(level=logging.INFO,
-                        format="%(levelname)s: %(message)s")
-
     df = pd.read_json(TESTSET_PATH, lines=True).head(MAX_CASES)
+    rows: list[dict] = []
 
-    hop_values   = [1, 3, 5, 10]      # sweep this
-    rec_k_values = [3, 5, 10, 20]     # just for plotting
-    sweep_rows   = []                 # will hold one row per hop_n
+    # single pass over all paragraphs
+    for rec in df.to_dict("records"):
+        m = evaluate_case(
+            rec["paragraph"],
+            [str(pid) for pid in rec.get("references", [])],
+            rec.get("year")
+        )
+        m["method"] = "rrf_hop1_llm"        # tag this run
+        rows.append(m)
 
-    for hop_n in hop_values:
-        per_paragraph = []
-        for rec in df.to_dict("records"):
-            m = evaluate_case(
-                paragraph   = rec["paragraph"],
-                gold_pids   = [str(pid) for pid in rec.get("references", [])],
-                hop_top_n   = hop_n,
-                final_k     = 20,            # always generate 20
-                target_year = rec.get("year")
-            )
-            per_paragraph.append(m)
+    # build DataFrame once
+    metric_df = pd.DataFrame(rows)
 
-        avg = pd.DataFrame(per_paragraph).mean(numeric_only=True)
+    # 1) console average
+    print("\nRRF → hop → LLM (k=20) average metrics:\n")
+    print(metric_df.mean(numeric_only=True).round(4))
 
-        # extract just the ks we care about
-        sweep_rows.append({
-            "hop_n":   hop_n,
-            "P@3":     avg["P@3"],
-            "P@5":     avg["P@5"],
-            "P@10":    avg["P@10"],
-            "P@20":    avg["P@20"],
-            "HR@3":    avg["HR@3"],
-            "HR@5":    avg["HR@5"],
-            "HR@10":   avg["HR@10"],
-            "HR@20":   avg["HR@20"],
-            "R@3":     avg["R@3"],
-            "R@5":     avg["R@5"],
-            "R@10":    avg["R@10"],
-            "R@20":    avg["R@20"],
-            "NDCG@3":  avg["NDCG@3"],
-            "NDCG@5":  avg["NDCG@5"],
-            "NDCG@10": avg["NDCG@10"],
-            "NDCG@20": avg["NDCG@20"],
-        })
+    # 2) aggregate curves
+    ks = np.array(TOPK_LIST)
+    save_dir = Path(__file__).parent / "eval"
+    save_dir.mkdir(exist_ok=True)
 
-        print(f"\n=== hop_n = {hop_n} averages ===")
-        print(avg[[f"P@{k}"   for k in rec_k_values] +
-                  [f"HR@{k}"  for k in rec_k_values] +
-                  [f"R@{k}"   for k in rec_k_values] +
-                  [f"NDCG@{k}"for k in rec_k_values]].round(4))
+    for prefix in ["P", "HR", "R", "NDCG"]:
+        y = metric_df[[f"{prefix}@{k}" for k in ks]].mean().values
+        plt.figure()
+        plt.plot(ks, y, marker="o")
+        plt.title(f"{prefix}@k vs k")
+        plt.xlabel("k")
+        plt.ylabel(prefix)
+        plt.grid(True)
+        plt.tight_layout()
+        plt.savefig(save_dir / f"{prefix.lower()}_rrf_hop1_llm.png", dpi=200)
+        plt.close()
 
-    sweep_df = pd.DataFrame(sweep_rows).set_index("hop_n")
-
-    csv_dir = Path(__file__).parent / "csv";  csv_dir.mkdir(exist_ok=True)
-    sweep_df.to_csv(csv_dir / "metrics_hop_sweep.csv")
-
-    eval_dir = Path(__file__).parent / "eval"; eval_dir.mkdir(exist_ok=True)
-
-    for rec_k in rec_k_values:
-        for metric in ["P", "HR", "R", "NDCG"]:
-            col = f"{metric}@{rec_k}"
-            plt.figure()
-            plt.plot(sweep_df.index, sweep_df[col], marker="o", ms=4)
-            plt.title(f"{metric}@{rec_k} vs hop_n")
-            plt.xlabel("hop_n")
-            plt.ylabel(metric)
-            plt.grid(True)
-            plt.tight_layout()
-            fname = f"{metric.lower()}_at_{rec_k}_vs_hop.png"
-            plt.savefig(eval_dir / fname, dpi=200)
-            plt.close()
+    # 3) persist CSV
+    csv_dir = Path(__file__).parent / "csv"
+    csv_dir.mkdir(exist_ok=True)
+    metric_df.to_csv(csv_dir / "metrics_rrf_hop1_llm.csv", index=False)
 
 if __name__ == "__main__":
     main()
