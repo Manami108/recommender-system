@@ -18,7 +18,7 @@ _MODEL_ID  = os.getenv("LLAMA_MODEL",  "meta-llama/Meta-Llama-3.1-8B-Instruct")
 # https://medium.com/@tahirbalarabe2/prompt-engineering-with-llama-3-3-032daa5999f7
 # https://www.kaggle.com/code/manojsrivatsav/prompt-engineering-with-llama-3-1-8b
 
-_PROMPT_PATH = Path(__file__).parent / "prompts" / "working3.prompt"
+_PROMPT_PATH = Path(__file__).parent / "prompts" / "working1.prompt"
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -41,7 +41,7 @@ _mdl = AutoModelForCausalLM.from_pretrained(
     trust_remote_code=True          # avoids class-mismatch errors
 )
 
-MAX_GEN    = 1600 # max tokens to generate per prompt
+MAX_GEN    = 1700 # max tokens to generate per prompt
 BATCH_SIZE = 3 # how many candidates per LLM call
 MAX_POOL   = 200  # cap on total candidates before batching
 TOK_HEAD = _mdl.config.max_position_embeddings - MAX_GEN   # max context tokens (after tokenization)

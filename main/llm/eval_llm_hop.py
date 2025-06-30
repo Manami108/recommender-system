@@ -93,16 +93,34 @@ def evaluate_case(
 
     #  rerank via LLM scoring
     try:
-        reranked = rerank_batch(
+        # meta_pool = metadata for every candidate paper
+        llm_df = rerank_batch(
             paragraph,
-            meta_pool[["pid","title","abstract"]],
-            k=LLM_TOPK,
-            max_candidates=len(meta_pool)
+            meta_pool[["pid", "title", "abstract"]],
+            k=LLM_TOPK,                      # how many to keep
+        )                                   # → columns: pid, score
+
+        # add the RRF rank of each seed for deterministic tie-breaking
+        llm_df = (
+            llm_df.merge(
+                seeds_df[["pid", "rank"]].rename(columns={"rank": "rrf_rank"}),
+                on="pid",
+                how="left",
             )
-        final_ids = reranked.pid.tolist()  
+        )
+
+        # sort: 1) higher LLM score  2) lower RRF rank
+        llm_df = llm_df.sort_values(
+            ["score", "rrf_rank"],
+            ascending=[False, True],
+            kind="mergesort",
+        )
+
+        final_ids = llm_df["pid"].tolist()
+
     except RerankError as e:
-        logging.warning("LLM rerank failed → fallback order (%s)", e)
-        final_ids = meta_pool.pid.head(LLM_TOPK).tolist()
+        logging.warning("⚠️ Rerank failed, falling back to RRF order: %s", e)
+        final_ids = seeds_df["pid"].tolist()
 
 
     # embed references & predicted candidates
