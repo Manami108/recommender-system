@@ -25,11 +25,46 @@ from recall   import (
 from rerank_llm    import rerank_batch, RerankError
 from hop_reasoning import multi_hop_topic_citation_reasoning   # <<< hop >>>
 
+
+
+
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+def send_email(subject: str, body: str):
+    sender_email = "manakokko25@gmail.com"
+    receiver_email = "manakokko25@gmail.com"
+    password = "ehjijtgqzwdahiay"
+    
+    # Gmail: use 'smtp.gmail.com', port 587
+    # Outlook: 'smtp.office365.com', port 587
+    # Others: Check your provider's SMTP server & port
+    smtp_server = "smtp.gmail.com"
+    port = 587
+
+    msg = MIMEMultipart()
+    msg["From"] = sender_email
+    msg["To"] = receiver_email
+    msg["Subject"] = subject
+    msg.attach(MIMEText(body, "plain"))
+
+    try:
+        server = smtplib.SMTP(smtp_server, port)
+        server.starttls()
+        server.login(sender_email, password)
+        server.send_message(msg)
+        server.quit()
+        print("✅ Email notification sent.")
+    except Exception as e:
+        print(f"❌ Failed to send email: {e}")
+
+
 # config
 TESTSET_PATH = Path(os.getenv(
     "TESTSET_PATH",
     "/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020_references.jsonl"))
-MAX_CASES  = int(os.getenv("MAX_CASES", 100))
+MAX_CASES  = int(os.getenv("MAX_CASES", 50))
 TOPK_LIST  = tuple(range(1, 21))
 SIM_THRESH = 0.95
 
@@ -207,4 +242,10 @@ def main() -> None:
     metric_df.to_csv(csv_dir / "metrics_rrf_hop1_llm.csv", index=False)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+        send_email("✅ Script completed", "Your reranking script finished successfully.")
+    except Exception as e:
+        send_email("❌ Script failed", f"Your reranking script failed with error:\n\n{e}")
+        raise  # re-raise the error for visibility
+
