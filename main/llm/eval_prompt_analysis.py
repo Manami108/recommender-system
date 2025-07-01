@@ -107,7 +107,7 @@ def evaluate_case(
         full_bm25,
         full_vec,
         chunk_pool,
-        top_k=20,
+        top_k=40,
     ).reset_index(drop=True)  
 
     pool["rrf_rank"] = np.arange(len(pool))
@@ -123,7 +123,7 @@ def evaluate_case(
     try:
         llm_df = rerank_batch(paragraph,            # ← returns pid, score
                               cand[["pid", "title", "abstract"]],
-                              k=20)                 # keep up to 20
+                              k=40)                 # keep up to 20
 
         # bring RRF metrics in for tie-breaking
         llm_df = (

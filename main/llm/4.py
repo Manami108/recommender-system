@@ -1,4 +1,5 @@
-# eval_rrf_llm_hop.py  (20 RRF seeds → hop → LLM top-20)
+# before you run this code, lets make sure rerank_llm is working 3. 
+# Change png (3 parts) name 
 
 from __future__ import annotations
 import faulthandler
@@ -26,6 +27,8 @@ from recall   import (
 )
 from rerank_llm    import rerank_batch, RerankError
 from hop_reasoning import multi_hop_topic_citation_reasoning   # <<< hop >>>
+
+
 
 
 import smtplib
@@ -60,18 +63,17 @@ def send_email(subject: str, body: str):
         print(f"❌ Failed to send email: {e}")
 
 
-
 # config
 TESTSET_PATH = Path(os.getenv(
     "TESTSET_PATH",
-    "/home/abhi/Desktop/Manami/recommender-system/datasets/testset2.jsonl"))
+    "/home/abhi/Desktop/Manami/recommender-system/datasets/testset3.jsonl"))
 MAX_CASES  = int(os.getenv("MAX_CASES", 50))
 TOPK_LIST  = tuple(range(1, 21))
 SIM_THRESH = 0.95
 
 RRF_TOPK       = 40  # keep top 20 seeds after RRF fusion
-HOP_TOP_N      = 3   # retrieve up to 20 hop papers per seed
-FINAL_POOL_CAP = 120  # cap total pool size before final LLM
+HOP_TOP_N      = 1   # retrieve up to 20 hop papers per seed
+FINAL_POOL_CAP = 400  # cap total pool size before final LLM
 LLM_TOPK       = 40  # final list size
 
 TOKENIZER = AutoTokenizer.from_pretrained(
@@ -112,10 +114,8 @@ def evaluate_case(
         rrf_fuse(bm25, vec, chunk_pool, top_k=RRF_TOPK)
         .reset_index(drop=True)
     )
-    # add a deterministic rank (0 = best, 1 = next…)
     seeds_df["rrf_rank"] = np.arange(len(seeds_df))
     seed_ids = seeds_df.pid.tolist()
-
 
     # this is hop expansions
     hop_df   = multi_hop_topic_citation_reasoning(seed_ids, top_n=HOP_TOP_N)  # <<< hop >>>
@@ -161,7 +161,6 @@ def evaluate_case(
     except RerankError as e:
         logging.warning("⚠️ Rerank failed, falling back to RRF order: %s", e)
         final_ids = seeds_df["pid"].tolist()
-
 
     # embed references & predicted candidates
     # Calculates cosine similarities between reranked abstracts and true references.
@@ -214,7 +213,7 @@ def main() -> None:
             [str(pid) for pid in rec.get("references", [])],
             rec.get("year")
         )
-        m["method"] = "rrf_hop_llm"        # tag this run
+        m["method"] = "rrf_hop1_llm"        # tag this run
         rows.append(m)
 
     # build DataFrame once
@@ -238,13 +237,13 @@ def main() -> None:
         plt.ylabel(prefix)
         plt.grid(True)
         plt.tight_layout()
-        plt.savefig(save_dir / f"{prefix.lower()}_rrf_hop_llm.png", dpi=200)
+        plt.savefig(save_dir / f"{prefix.lower()}_rrf_hop1_llm.png", dpi=200)
         plt.close()
 
     # 3) persist CSV
-    csv_dir = Path(__file__).parent / "csv2"
+    csv_dir = Path(__file__).parent / "csv3"
     csv_dir.mkdir(exist_ok=True)
-    metric_df.to_csv(csv_dir / "2metrics_rrf_hop_llm.csv", index=False)
+    metric_df.to_csv(csv_dir / "3metrics_rrf_hop1_llm.csv", index=False)
 
 if __name__ == "__main__":
     try:

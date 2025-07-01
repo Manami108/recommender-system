@@ -12,7 +12,7 @@ from recall import recall_fulltext, fetch_metadata, embed
 import matplotlib.pyplot as plt         
 
 # Hard-coded testset path and params
-TESTSET_PATH   = Path("/home/abhi/Desktop/Manami/recommender-system/datasets/testset2.jsonl")
+TESTSET_PATH   = Path("/home/abhi/Desktop/Manami/recommender-system/datasets/testset4.jsonl")
 MAX_CASES      = 50  # How many paragraphs to consider
 SIM_THRESHOLD  = 0.95
 TOPK_LIST     = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20) # K-values for evaluation metrics
@@ -150,7 +150,7 @@ def main() -> None:
 
     # build DataFrame and write to CSV
     metric_df = pd.DataFrame(rows)
-    out_path = Path(__file__).parent / "csv2" / "2metrics_bm25.csv"
+    out_path = Path(__file__).parent / "csv4" / "4metrics_bm25.csv"
     metric_df.to_csv(out_path, index=False)
 
     # print average metrics
