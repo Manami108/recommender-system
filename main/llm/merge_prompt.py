@@ -39,5 +39,5 @@ for metric in ["P", "R", "HR", "NDCG"]:
     plt.ylabel(metric)
     plt.grid(True)
     plt.tight_layout()
-    plt.savefig(f"./eval/{metric.lower()}_all_prompt.png", dpi=200)
+    plt.savefig(f"./eval/{metric.lower()}_all_prompts.png", dpi=200)
     plt.close()

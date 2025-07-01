@@ -163,7 +163,7 @@ def rrf_fuse(
     full_vec:  pd.DataFrame,
     chunk_pool: pd.DataFrame,
     k_rrf:    int = 60,
-    top_k:    int = 20,
+    top_k:    int = 40,
 ) -> pd.DataFrame:
     # 1) compute per‐source RRF scores
     sources = [

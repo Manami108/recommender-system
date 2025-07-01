@@ -23,8 +23,8 @@ from recall import (
 
 # config
 TESTSET_PATH  = Path(os.getenv("TESTSET_PATH",
-                     "/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020_references.jsonl"))
-MAX_CASES     = int(os.getenv("MAX_CASES", 100))
+                     "/home/abhi/Desktop/Manami/recommender-system/datasets/testset2.jsonl"))
+MAX_CASES     = int(os.getenv("MAX_CASES", 50))
 SIM_THRESHOLD = float(os.getenv("SIM_THRESHOLD", 0.95))
 TOPK_LIST     = tuple(range(1, 21))
 TOKENIZER     = AutoTokenizer.from_pretrained(
@@ -143,7 +143,7 @@ def main() -> None:
         plt.close()
 
     # 3) Save CSV
-    out_path = Path(__file__).parent / "csv" / "metrics_rrf.csv"
+    out_path = Path(__file__).parent / "csv2" / "2metrics_rrf.csv"
     out_path.parent.mkdir(exist_ok=True)
     metric_df.to_csv(out_path, index=False)
 

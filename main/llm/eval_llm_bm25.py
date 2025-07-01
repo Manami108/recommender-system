@@ -1,6 +1,10 @@
 
 # This is full BM25 only - no hops, no chunks but llm reranking 
 from __future__ import annotations
+
+import faulthandler
+faulthandler.enable(all_threads=True, file=open("fault.log", "w"))
+
 import os
 import numpy as np
 import pandas as pd
@@ -17,9 +21,42 @@ from recall import (
 from rerank_llm import rerank_batch, RerankError  # returns DataFrame with pid, score
 import matplotlib.pyplot as plt         
 
+
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+def send_email(subject: str, body: str):
+    sender_email = "manakokko25@gmail.com"
+    receiver_email = "manakokko25@gmail.com"
+    password = "ehjijtgqzwdahiay"
+    
+    # Gmail: use 'smtp.gmail.com', port 587
+    # Outlook: 'smtp.office365.com', port 587
+    # Others: Check your provider's SMTP server & port
+    smtp_server = "smtp.gmail.com"
+    port = 587
+
+    msg = MIMEMultipart()
+    msg["From"] = sender_email
+    msg["To"] = receiver_email
+    msg["Subject"] = subject
+    msg.attach(MIMEText(body, "plain"))
+
+    try:
+        server = smtplib.SMTP(smtp_server, port)
+        server.starttls()
+        server.login(sender_email, password)
+        server.send_message(msg)
+        server.quit()
+        print("✅ Email notification sent.")
+    except Exception as e:
+        print(f"❌ Failed to send email: {e}")
+
+
 # config
-TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020_references.jsonl"))
-MAX_CASES     = int(os.getenv("MAX_CASES", 100)) # Number of test cases to evaluate
+TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset2.jsonl"))
+MAX_CASES     = int(os.getenv("MAX_CASES", 50)) # Number of test cases to evaluate
 SIM_THRESHOLD = float(os.getenv("SIM_THRESHOLD", 0.95))
 TOPK_LIST     = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20) # K-values for evaluation metrics
 
@@ -58,7 +95,7 @@ def evaluate_case(
         .merge(meta[["pid", "title", "abstract", "year"]], on="pid", how="left")
         .dropna(subset=["abstract"])
         .sort_values("bm25_score", ascending=False)   # explicit sort
-        .head(20)
+        .head(40)
     )
 
     # This fillter out the future papers but now the year is set to 2020 (latest in the dataset) so it does not matter. 
@@ -69,48 +106,55 @@ def evaluate_case(
     
     # Ask the LLM to rerank your 20 candidates by relevance to the paragraph.
     try:
-        reranked = rerank_batch(
+        llm_df = rerank_batch(
             paragraph,
-            merged[["pid","title","abstract"]],
-            k=20,
+            merged[["pid", "title", "abstract"]],
+            k=40,                   # let the LLM see / rank all 20
+        )                           # → columns: pid, score
+
+        # add BM25 score for deterministic tie-breaking
+        llm_df = llm_df.merge(
+            merged[["pid", "bm25_score"]],
+            on="pid",
+            how="left",
         )
-        final_pids = reranked["pid"].tolist()
-    # On failure, just keep the original BM25 ordering.
+
+        # sort: 1) LLM score ↓  2) bm25_score ↓
+        llm_df = llm_df.sort_values(
+            ["score", "bm25_score"],
+            ascending=[False, False],
+            kind="mergesort",
+        )
+
+        predicted = llm_df["pid"].tolist()
+
     except RerankError as e:
-        print("⚠️ Rerank failed, fallback to BM25 order:", e)
-        final_pids = merged["pid"].tolist()
+        print("⚠️  Rerank failed, falling back to BM25 order:", e)
+        predicted = merged["pid"].tolist()
 
     # fetch and embed all the true reference papers’ abstracts. 
     # If none have valid abstracts, create a zero-matrix so that nothing is ever “similar.”
     ref_meta = fetch_metadata([str(p) for p in true_pids]).dropna(subset=["abstract"])
-    ref_ids  = list(ref_meta["pid"])
-    ref_embs = np.stack([embed(a) for a in ref_meta["abstract"]]) if ref_ids else np.zeros((0,768))
+    ref_ids  = ref_meta["pid"].tolist()
+    ref_embs = np.stack([embed(a) for a in ref_meta["abstract"]]) if ref_ids else np.zeros((0, 768))
 
-    # Embed each candidate’s abstract
-    cand_meta = merged.set_index("pid").loc[final_pids]
-    cand_absts = cand_meta["abstract"].tolist()
-    cand_embs  = np.stack([embed(a) for a in cand_absts])
+    cand_meta  = merged.set_index("pid").loc[predicted]
+    cand_embs  = np.stack([embed(a) for a in cand_meta["abstract"]])
 
     # Keep the references still unmatched 
     # If the similarity is more than 0.95, mark that candidate as a hit and remove the reference from future matching.
-    sims      = cosine_matrix(cand_embs, ref_embs) if ref_ids else np.zeros((len(final_pids),0))
-    unmatched = set(range(len(ref_ids)))
-    hits      = []
 
-    for i in range(len(final_pids)):
+    sims = cosine_matrix(cand_embs, ref_embs) if ref_ids else np.zeros((len(predicted), 0))
+    unmatched, hits = set(range(len(ref_ids))), []
+    for i in range(len(predicted)):
         if not unmatched:
             hits.append(False)
             continue
-
-        # look only at still‐unmatched references
-        ref_idxs = list(unmatched)
-        sim_vals = sims[i, ref_idxs]
-        j = sim_vals.argmax()
-        if sim_vals[j] >= SIM_THRESHOLD:
-
-            # mark both candidate as hit, and remove that ref
+        idxs = list(unmatched)
+        j = sims[i, idxs].argmax()
+        if sims[i, idxs][j] >= SIM_THRESHOLD:
             hits.append(True)
-            unmatched.remove(ref_idxs[j])
+            unmatched.remove(idxs[j])
         else:
             hits.append(False)
 
@@ -161,7 +205,7 @@ def main() -> None:
             [str(pid) for pid in rec.get("references", [])],
             rec.get("year")
         )
-        m["method"] = "bm25_full_llm"  
+        m["method"] = "bm25_llm"  
         rows.append(m)
 
     for prefix in ["P", "HR", "R", "NDCG"]:
@@ -178,15 +222,15 @@ def main() -> None:
         plt.show()
 
         # save and close
-        plt.savefig(Path(__file__).parent / "eval" / f"{prefix.lower()}_atk.png", dpi=200)
+        plt.savefig(Path(__file__).parent / "eval" / f"{prefix.lower()}_bm25_llm.png", dpi=200)
         plt.close()
 
     avg = pd.DataFrame(metrics).mean(numeric_only=True)
-    print("\nEvaluation with RRF + LLM scoring - avg metrics:\n", avg.round(4))
+    print("\nEvaluation with BM25 + LLM scoring - avg metrics:\n", avg.round(4))
 
     # build DataFrame and write to CSV
     metric_df = pd.DataFrame(rows)
-    out_csv   = Path(__file__).parent / "csv" / "metrics_bm25_full_llm.csv"
+    out_csv   = Path(__file__).parent / "csv2" / "2metrics_bm25_llm.csv"
     metric_df.to_csv(out_csv, index=False)
     print(f"\nSaved per‐paragraph metrics to {out_csv}")
 
@@ -194,4 +238,10 @@ def main() -> None:
     print("\nAverage metrics:\n", avg)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+        send_email("✅ Script completed", "Your reranking script finished successfully.")
+    except Exception as e:
+        send_email("❌ Script failed", f"Your reranking script failed with error:\n\n{e}")
+        raise  # re-raise the error for visibility
+
