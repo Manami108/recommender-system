@@ -1,6 +1,9 @@
 
 # This is rrf reranking -> llm reranking 
 from __future__ import annotations
+import faulthandler
+faulthandler.enable(all_threads=True, file=open("fault.log", "w"))
+
 import os
 import json
 import numpy as np
@@ -22,9 +25,42 @@ from rerank_llm import rerank_batch, RerankError  # returns DataFrame with pid, 
 import matplotlib.pyplot as plt         
 
 
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+def send_email(subject: str, body: str):
+    sender_email = "manakokko25@gmail.com"
+    receiver_email = "manakokko25@gmail.com"
+    password = "ehjijtgqzwdahiay"
+    
+    # Gmail: use 'smtp.gmail.com', port 587
+    # Outlook: 'smtp.office365.com', port 587
+    # Others: Check your provider's SMTP server & port
+    smtp_server = "smtp.gmail.com"
+    port = 587
+
+    msg = MIMEMultipart()
+    msg["From"] = sender_email
+    msg["To"] = receiver_email
+    msg["Subject"] = subject
+    msg.attach(MIMEText(body, "plain"))
+
+    try:
+        server = smtplib.SMTP(smtp_server, port)
+        server.starttls()
+        server.login(sender_email, password)
+        server.send_message(msg)
+        server.quit()
+        print("✅ Email notification sent.")
+    except Exception as e:
+        print(f"❌ Failed to send email: {e}")
+
+
+
 # config
 TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset1.jsonl"))
-MAX_CASES     = int(os.getenv("MAX_CASES", 100)) # Number of test cases to evaluate
+MAX_CASES     = int(os.getenv("MAX_CASES", 50)) # Number of test cases to evaluate
 SIM_THRESHOLD = float(os.getenv("SIM_THRESHOLD", 0.95))
 TOPK_LIST     = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20) # K-values for evaluation metrics
 
@@ -200,5 +236,10 @@ def main() -> None:
     metric_df.to_csv(out_path, index=False)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+        send_email("✅ Script completed", "Your reranking script finished successfully.")
+    except Exception as e:
+        send_email("❌ Script failed", f"Your reranking script failed with error:\n\n{e}")
+        raise  # re-raise the error for visibility
 

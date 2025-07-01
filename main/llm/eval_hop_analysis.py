@@ -2,6 +2,9 @@
 # Change png (3 parts) name 
 
 from __future__ import annotations
+import faulthandler
+faulthandler.enable(all_threads=True, file=open("fault.log", "w"))
+
 import os, math, logging
 from pathlib import Path
 from typing import List, Optional
@@ -63,7 +66,7 @@ def send_email(subject: str, body: str):
 # config
 TESTSET_PATH = Path(os.getenv(
     "TESTSET_PATH",
-    "/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020_references.jsonl"))
+    "/home/abhi/Desktop/Manami/recommender-system/datasets/testset1.jsonl"))
 MAX_CASES  = int(os.getenv("MAX_CASES", 50))
 TOPK_LIST  = tuple(range(1, 21))
 SIM_THRESH = 0.95
@@ -237,9 +240,9 @@ def main() -> None:
         plt.close()
 
     # 3) persist CSV
-    csv_dir = Path(__file__).parent / "csv"
+    csv_dir = Path(__file__).parent / "csv1"
     csv_dir.mkdir(exist_ok=True)
-    metric_df.to_csv(csv_dir / "metrics_rrf_hop1_llm.csv", index=False)
+    metric_df.to_csv(csv_dir / "1metrics_rrf_hop1_llm.csv", index=False)
 
 if __name__ == "__main__":
     try:

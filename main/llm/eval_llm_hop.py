@@ -1,6 +1,9 @@
 # eval_rrf_llm_hop.py  (20 RRF seeds → hop → LLM top-20)
 
 from __future__ import annotations
+import faulthandler
+faulthandler.enable(all_threads=True, file=open("fault.log", "w"))
+
 import os, math, logging
 from pathlib import Path
 from typing import List, Optional
@@ -24,11 +27,45 @@ from recall   import (
 from rerank_llm    import rerank_batch, RerankError
 from hop_reasoning import multi_hop_topic_citation_reasoning   # <<< hop >>>
 
+
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+def send_email(subject: str, body: str):
+    sender_email = "manakokko25@gmail.com"
+    receiver_email = "manakokko25@gmail.com"
+    password = "ehjijtgqzwdahiay"
+    
+    # Gmail: use 'smtp.gmail.com', port 587
+    # Outlook: 'smtp.office365.com', port 587
+    # Others: Check your provider's SMTP server & port
+    smtp_server = "smtp.gmail.com"
+    port = 587
+
+    msg = MIMEMultipart()
+    msg["From"] = sender_email
+    msg["To"] = receiver_email
+    msg["Subject"] = subject
+    msg.attach(MIMEText(body, "plain"))
+
+    try:
+        server = smtplib.SMTP(smtp_server, port)
+        server.starttls()
+        server.login(sender_email, password)
+        server.send_message(msg)
+        server.quit()
+        print("✅ Email notification sent.")
+    except Exception as e:
+        print(f"❌ Failed to send email: {e}")
+
+
+
 # config
 TESTSET_PATH = Path(os.getenv(
     "TESTSET_PATH",
-    "/home/abhi/Desktop/Manami/recommender-system/datasets/testset_2020_references.jsonl"))
-MAX_CASES  = int(os.getenv("MAX_CASES", 100))
+    "/home/abhi/Desktop/Manami/recommender-system/datasets/testset1.jsonl"))
+MAX_CASES  = int(os.getenv("MAX_CASES", 50))
 TOPK_LIST  = tuple(range(1, 21))
 SIM_THRESH = 0.95
 
@@ -202,9 +239,15 @@ def main() -> None:
         plt.close()
 
     # 3) persist CSV
-    csv_dir = Path(__file__).parent / "csv"
+    csv_dir = Path(__file__).parent / "csv1"
     csv_dir.mkdir(exist_ok=True)
-    metric_df.to_csv(csv_dir / "metrics_rrf_hop_llm.csv", index=False)
+    metric_df.to_csv(csv_dir / "1metrics_rrf_hop_llm.csv", index=False)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+        send_email("✅ Script completed", "Your reranking script finished successfully.")
+    except Exception as e:
+        send_email("❌ Script failed", f"Your reranking script failed with error:\n\n{e}")
+        raise  # re-raise the error for visibility
+

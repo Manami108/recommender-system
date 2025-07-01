@@ -1,8 +1,10 @@
 
 # This is rrf reranking -> llm reranking 
 # Need to change prompt png, method, and csv and prompt path in rerank_llm
-
 from __future__ import annotations
+import faulthandler
+faulthandler.enable(all_threads=True, file=open("fault.log", "w"))
+
 import os
 import json
 import numpy as np
