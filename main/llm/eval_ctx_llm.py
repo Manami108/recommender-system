@@ -59,7 +59,7 @@ def send_email(subject: str, body: str):
 
 
 # config
-TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset1.jsonl"))
+TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset2.jsonl"))
 MAX_CASES     = int(os.getenv("MAX_CASES", 50)) # Number of test cases to evaluate
 SIM_THRESHOLD = float(os.getenv("SIM_THRESHOLD", 0.95))
 TOPK_LIST     = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20) # K-values for evaluation metrics
@@ -109,7 +109,7 @@ def evaluate_case(
         full_bm25,
         full_vec,
         chunk_pool,
-        top_k=20,
+        top_k=40,
     ).reset_index(drop=True)  
 
     pool["rrf_rank"] = np.arange(len(pool))
@@ -125,7 +125,7 @@ def evaluate_case(
     try:
         llm_df = rerank_batch(paragraph,            # ← returns pid, score
                               cand[["pid", "title", "abstract"]],
-                              k=20)                 # keep up to 20
+                              k=40)                 # keep up to 20
 
         # bring RRF metrics in for tie-breaking
         llm_df = (
@@ -231,7 +231,7 @@ def main() -> None:
         plt.close()
 
     # 3) Save CSV
-    out_path = Path(__file__).parent / "csv1" / "1metrics_rrf_llm.csv"
+    out_path = Path(__file__).parent / "csv2" / "2metrics_rrf_llm.csv"
     out_path.parent.mkdir(exist_ok=True)
     metric_df.to_csv(out_path, index=False)
 

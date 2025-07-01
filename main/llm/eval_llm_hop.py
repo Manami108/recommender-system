@@ -64,15 +64,15 @@ def send_email(subject: str, body: str):
 # config
 TESTSET_PATH = Path(os.getenv(
     "TESTSET_PATH",
-    "/home/abhi/Desktop/Manami/recommender-system/datasets/testset1.jsonl"))
+    "/home/abhi/Desktop/Manami/recommender-system/datasets/testset2.jsonl"))
 MAX_CASES  = int(os.getenv("MAX_CASES", 50))
 TOPK_LIST  = tuple(range(1, 21))
 SIM_THRESH = 0.95
 
-RRF_TOPK       = 20  # keep top 20 seeds after RRF fusion
+RRF_TOPK       = 40  # keep top 20 seeds after RRF fusion
 HOP_TOP_N      = 3   # retrieve up to 20 hop papers per seed
-FINAL_POOL_CAP = 60  # cap total pool size before final LLM
-LLM_TOPK       = 20  # final list size
+FINAL_POOL_CAP = 120  # cap total pool size before final LLM
+LLM_TOPK       = 40  # final list size
 
 TOKENIZER = AutoTokenizer.from_pretrained(
     "meta-llama/Meta-Llama-3.1-8B-Instruct", use_fast=True)
@@ -108,8 +108,14 @@ def evaluate_case(
     for df in (bm25, vec):
         df.drop(columns=[c for c in df.columns if c not in ("pid", "rank")], inplace=True)
 
-    seeds_df = rrf_fuse(bm25, vec, chunk_pool, top_k=RRF_TOPK)
+    seeds_df = (
+        rrf_fuse(bm25, vec, chunk_pool, top_k=RRF_TOPK)
+        .reset_index(drop=True)
+    )
+    # add a deterministic rank (0 = best, 1 = next…)
+    seeds_df["rrf_rank"] = np.arange(len(seeds_df))
     seed_ids = seeds_df.pid.tolist()
+
 
     # this is hop expansions
     hop_df   = multi_hop_topic_citation_reasoning(seed_ids, top_n=HOP_TOP_N)  # <<< hop >>>
@@ -138,17 +144,14 @@ def evaluate_case(
         )                                   # → columns: pid, score
 
         # add the RRF rank of each seed for deterministic tie-breaking
-        llm_df = (
-            llm_df.merge(
-                seeds_df[["pid", "rank"]].rename(columns={"rank": "rrf_rank"}),
-                on="pid",
-                how="left",
-            )
+        llm_df = llm_df.merge(
+            seeds_df[["pid", "rrf_rank"]],
+            on="pid",
+            how="left",
         )
 
-        # sort: 1) higher LLM score  2) lower RRF rank
         llm_df = llm_df.sort_values(
-            ["score", "rrf_rank"],
+            ["score", "rrf_rank"],        # score ↓ , rrf_rank ↑
             ascending=[False, True],
             kind="mergesort",
         )
@@ -239,9 +242,9 @@ def main() -> None:
         plt.close()
 
     # 3) persist CSV
-    csv_dir = Path(__file__).parent / "csv1"
+    csv_dir = Path(__file__).parent / "csv2"
     csv_dir.mkdir(exist_ok=True)
-    metric_df.to_csv(csv_dir / "1metrics_rrf_hop_llm.csv", index=False)
+    metric_df.to_csv(csv_dir / "2metrics_rrf_hop_llm.csv", index=False)
 
 if __name__ == "__main__":
     try:

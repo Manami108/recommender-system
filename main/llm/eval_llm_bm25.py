@@ -55,7 +55,7 @@ def send_email(subject: str, body: str):
 
 
 # config
-TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset1.jsonl"))
+TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset2.jsonl"))
 MAX_CASES     = int(os.getenv("MAX_CASES", 50)) # Number of test cases to evaluate
 SIM_THRESHOLD = float(os.getenv("SIM_THRESHOLD", 0.95))
 TOPK_LIST     = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20) # K-values for evaluation metrics
@@ -95,7 +95,7 @@ def evaluate_case(
         .merge(meta[["pid", "title", "abstract", "year"]], on="pid", how="left")
         .dropna(subset=["abstract"])
         .sort_values("bm25_score", ascending=False)   # explicit sort
-        .head(20)
+        .head(40)
     )
 
     # This fillter out the future papers but now the year is set to 2020 (latest in the dataset) so it does not matter. 
@@ -109,7 +109,7 @@ def evaluate_case(
         llm_df = rerank_batch(
             paragraph,
             merged[["pid", "title", "abstract"]],
-            k=20,                   # let the LLM see / rank all 20
+            k=40,                   # let the LLM see / rank all 20
         )                           # → columns: pid, score
 
         # add BM25 score for deterministic tie-breaking
@@ -230,7 +230,7 @@ def main() -> None:
 
     # build DataFrame and write to CSV
     metric_df = pd.DataFrame(rows)
-    out_csv   = Path(__file__).parent / "csv1" / "1metrics_bm25_llm.csv"
+    out_csv   = Path(__file__).parent / "csv2" / "2metrics_bm25_llm.csv"
     metric_df.to_csv(out_csv, index=False)
     print(f"\nSaved per‐paragraph metrics to {out_csv}")
 
