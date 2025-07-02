@@ -10,6 +10,9 @@ https://docs.google.com/document/d/1w6oR8HBcd2USkIyLxnu0ILzq_3Q6FVjpHXXyZW3aknA/
 ## Experimental Protocol
 https://docs.google.com/document/d/10WN7Q7yhme27JXIMy7q-j8Hbx9Amyt1D6Aol2LYlTvo/edit?tab=t.0
 
+## User Study
+https://docs.google.com/forms/d/1nPCiUVW8pXLYXelErhjDxIV6xZRkm2OlTJAA1tlCwLk/edit?hl=ja&pli=1
+
 ## Approach
 1) Sliding window chunking based on token
 2) BM25 (TFiDF-like back of words base) and embeding search -> Reciprocal Rank Fusion (RRF scoring) -> cancdidate retrievals
