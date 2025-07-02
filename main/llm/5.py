@@ -1,26 +1,29 @@
 
-# This is full BM25 only - no hops, no chunks but llm reranking 
+# This is rrf reranking -> llm reranking 
+# Need to change prompt png, method, and csv and prompt path in rerank_llm
 from __future__ import annotations
-
 import faulthandler
 faulthandler.enable(all_threads=True, file=open("fault.log", "w"))
 
 import os
+import json
 import numpy as np
 import pandas as pd
 from pathlib import Path
 from typing import List, Optional
 from neo4j import GraphDatabase
 from transformers import AutoTokenizer
-from chunking import clean_text
+from chunking import clean_text, chunk_tokens
 from recall import (
     recall_fulltext,
+    recall_vector,
+    recall_by_chunks,
+    rrf_fuse, 
     fetch_metadata,
     embed,
 )
-from rerank_llm import rerank_batch, RerankError  # returns DataFrame with pid, score
+from a import rerank_batch, RerankError  # returns DataFrame with pid, score
 import matplotlib.pyplot as plt         
-
 
 import smtplib
 from email.mime.text import MIMEText
@@ -53,9 +56,8 @@ def send_email(subject: str, body: str):
     except Exception as e:
         print(f"❌ Failed to send email: {e}")
 
-
 # config
-TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset3.jsonl"))
+TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset4.jsonl"))
 MAX_CASES     = int(os.getenv("MAX_CASES", 50)) # Number of test cases to evaluate
 SIM_THRESHOLD = float(os.getenv("SIM_THRESHOLD", 0.95))
 TOPK_LIST     = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20) # K-values for evaluation metrics
@@ -73,7 +75,6 @@ TOKENIZER  = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruc
 def cosine_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return a @ b.T
 
-
 def evaluate_case(
     paragraph: str,
     true_pids: List[str],
@@ -82,79 +83,92 @@ def evaluate_case(
     # take the raw paragraph, clean it (lower-casing, removing punctuation/stopwords, etc.), 
     # so that BM25 and embeddings both work on normalized text.
     cleaned = clean_text(paragraph)
+    chunks  = chunk_tokens(cleaned, TOKENIZER, win=256, stride=64)
 
-    # This runs a full-text BM25 search over my paragraph document index, returning the top 40 candidate paper IDs (because many abstract might be missed) along with their BM25 scores.
-    # BM25 does consider paragraph length as well so better than tf-idf
-    bm25 = recall_fulltext(cleaned, k=50)
-
-    # I pull each candidate’s abstract and publication year from Neo4j, 
-    # drop any papers missing an abstract. 
-    meta   = fetch_metadata(bm25["pid"].tolist())
-    merged = (
-        bm25
-        .merge(meta[["pid", "title", "abstract", "year"]], on="pid", how="left")
-        .dropna(subset=["abstract"])
-        .sort_values("bm25_score", ascending=False)   # explicit sort
-        .head(40)
-    )
-
-    # This fillter out the future papers but now the year is set to 2020 (latest in the dataset) so it does not matter. 
-    if target_year is not None:
-        merged = merged[merged["year"] < target_year]
-    if merged.empty:
-        raise ValueError("Empty candidate set after filtering by year and abstract")
+    # recall & fuse with reciprocal rank fusion (RRF)
+    # full-text & vector for whole paragraph
+    full_bm25 = recall_fulltext(cleaned).assign(src="full_bm25")
+    full_vec  = recall_vector(embed(cleaned)).assign(src="full_vec")
     
-    # Ask the LLM to rerank your 20 candidates by relevance to the paragraph.
+    # chunk-level retrieval
+    chunk_pool = recall_by_chunks(chunks)
+
+    # apply RRF fusion across all sources
+    # full-doc scores (bm25_score, semantic_score) → hybrid_full
+    # chunk-level max scores → hybrid_chunk
+    # Total hybrid_score = hybrid_full + hybrid_chunk
+    # strip out any extraneous columns so rrf_fuse sees just pid & rank
+    # strip everything except pid & rank on the two full-doc tables
+    for df in (full_bm25, full_vec):
+        df.drop(columns=[c for c in df.columns if c not in ("pid","rank")],
+                inplace=True)
+        
+    pool = rrf_fuse(
+        full_bm25,
+        full_vec,
+        chunk_pool,
+        top_k=40,
+    ).reset_index(drop=True)  
+
+    pool["rrf_rank"] = np.arange(len(pool))
+
+    # and extract pids for reranking
+    cand = fetch_metadata(pool["pid"].tolist())[["pid", "title", "abstract", "year"]]
+    if target_year is not None:
+        cand = cand[cand["year"] < target_year]
+    if cand.empty:
+        raise ValueError("Empty candidate set after filtering by year & abstract")
+
+    # 4. rerank via LLM scoring
     try:
-        llm_df = rerank_batch(
-            paragraph,
-            merged[["pid", "title", "abstract"]],
-            k=40,                   # let the LLM see / rank all 20
-        )                           # → columns: pid, score
+        llm_df = rerank_batch(paragraph,            # ← returns pid, score
+                              cand[["pid", "title", "abstract"]],
+                              k=40)                 # keep up to 20
 
-        # add BM25 score for deterministic tie-breaking
-        llm_df = llm_df.merge(
-            merged[["pid", "bm25_score"]],
-            on="pid",
-            how="left",
+        # bring RRF metrics in for tie-breaking
+        llm_df = (
+            llm_df
+            .merge(pool[["pid", "rrf_rank"]], on="pid", how="left")
         )
 
-        # sort: 1) LLM score ↓  2) bm25_score ↓
+        # sort: 1) LLM score ↓  2) rrf_rank ↑
         llm_df = llm_df.sort_values(
-            ["score", "bm25_score"],
-            ascending=[False, False],
-            kind="mergesort",
+            by=["score", "rrf_rank"],
+            ascending=[False, True],
+            kind="mergesort"
         )
+        # print(llm_df[["pid", "score", "rrf_rank"]].to_string(index=False))
 
         predicted = llm_df["pid"].tolist()
 
     except RerankError as e:
-        print("⚠️  Rerank failed, falling back to BM25 order:", e)
-        predicted = merged["pid"].tolist()
+        print("⚠️  Rerank failed, using RRF order:", e)
+        # pool is already sorted by rrf_score desc inside rrf_fuse
+        predicted = pool["pid"].tolist()
 
-    # fetch and embed all the true reference papers’ abstracts. 
-    # If none have valid abstracts, create a zero-matrix so that nothing is ever “similar.”
-    ref_meta = fetch_metadata([str(p) for p in true_pids]).dropna(subset=["abstract"])
+    # embed references & predicted candidates
+    # Calculates cosine similarities between reranked abstracts and true references.
+    # For each predicted paper, checks if any unmatched reference has sim ≥ 0.95 → it's a hit.
+    ref_meta = fetch_metadata(true_pids).dropna(subset=["abstract"])
     ref_ids  = ref_meta["pid"].tolist()
-    ref_embs = np.stack([embed(a) for a in ref_meta["abstract"]]) if ref_ids else np.zeros((0, 768))
+    ref_emb  = np.stack([embed(t) for t in ref_meta["abstract"]]) if ref_ids else np.zeros((0, 768))
 
-    cand_meta  = merged.set_index("pid").loc[predicted]
-    cand_embs  = np.stack([embed(a) for a in cand_meta["abstract"]])
+    cand_meta = cand.set_index("pid").loc[predicted]
+    cand_emb  = np.stack([embed(t) for t in cand_meta["abstract"]])
 
-    # Keep the references still unmatched 
-    # If the similarity is more than 0.95, mark that candidate as a hit and remove the reference from future matching.
-
-    sims = cosine_matrix(cand_embs, ref_embs) if ref_ids else np.zeros((len(predicted), 0))
-    unmatched, hits = set(range(len(ref_ids))), []
+    # 6. greedy match for hit detection
+    sims = cosine_matrix(cand_emb, ref_emb) if ref_ids else np.zeros((len(predicted),0))
+    unmatched = set(range(len(ref_ids)))
+    hits = []
     for i in range(len(predicted)):
         if not unmatched:
             hits.append(False)
             continue
         idxs = list(unmatched)
-        j = sims[i, idxs].argmax()
-        if sims[i, idxs][j] >= SIM_THRESHOLD:
+        best_j = sims[i, idxs].argmax()
+        if sims[i, idxs][best_j] >= SIM_THRESHOLD:
             hits.append(True)
-            unmatched.remove(idxs[j])
+            unmatched.remove(idxs[best_j])
         else:
             hits.append(False)
 
@@ -176,66 +190,48 @@ def evaluate_case(
         out.update({f"P@{k}": p_at_k, f"HR@{k}": hr_at_k, f"R@{k}": r_at_k, f"NDCG@{k}": ndcg})
     return out
 
-
-import matplotlib
-matplotlib.use("Agg") 
-
 # main function
 # Runs evaluation over the test cases and prints the average metrics.
+# main
 def main() -> None:
-    if not TESTSET_PATH.exists():
-        raise FileNotFoundError(f"Testset not found at {TESTSET_PATH}")
     df = pd.read_json(TESTSET_PATH, lines=True).head(MAX_CASES)
-    metrics = []
-    for rec in df.to_dict("records"):
-        metrics.append(
-            evaluate_case(
-                rec["paragraph"],
-                [str(pid) for pid in rec.get("references", [])],
-                rec.get("year")
-            )
-        )
-    metric_df = pd.DataFrame(metrics)
-    ks = np.array(TOPK_LIST)
+    rows: list[dict] = []
 
-    rows: List[dict] = []
+    # Single pass: evaluate each paragraph once
     for rec in df.to_dict("records"):
         m = evaluate_case(
             rec["paragraph"],
-            [str(pid) for pid in rec.get("references", [])],
+            [str(x) for x in rec.get("references", [])],
             rec.get("year")
         )
-        m["method"] = "bm25_llm"  
+        m["method"] = "rrf_llm_working1"     # or "bm25_full" as you prefer
         rows.append(m)
 
-    for prefix in ["P", "HR", "R", "NDCG"]:
-        y = metric_df[[f"{prefix}@{k}" for k in ks]].mean().values
+    # Build the DataFrame once
+    metric_df = pd.DataFrame(rows)
 
-        # create & plot
+    # 1) Print averages
+    print("\nRRF + LLM (k=20) average metrics:\n")
+    print(metric_df.mean(numeric_only=True).round(4))
+
+    # 2) Plot
+    ks = np.array(TOPK_LIST)
+    for prefix in ["P","HR","R","NDCG"]:
+        y = metric_df[[f"{prefix}@{k}" for k in ks]].mean().values
         plt.figure()
         plt.plot(ks, y, marker="o")
-        plt.title(f"{prefix}@k vs k  (averaged over {len(metric_df)} paragraphs)")
-        plt.xlabel("k: # of recommended papers")
+        plt.title(f"{prefix}@k vs k")
+        plt.xlabel("k")
         plt.ylabel(prefix)
         plt.grid(True)
         plt.tight_layout()
-        plt.show()
-
-        # save and close
-        plt.savefig(Path(__file__).parent / "eval" / f"{prefix.lower()}_bm25_llm.png", dpi=200)
+        plt.savefig(Path(__file__).parent / "eval" / f"{prefix.lower()}_rrf_llm_working1.png", dpi=200)
         plt.close()
 
-    avg = pd.DataFrame(metrics).mean(numeric_only=True)
-    print("\nEvaluation with BM25 + LLM scoring - avg metrics:\n", avg.round(4))
-
-    # build DataFrame and write to CSV
-    metric_df = pd.DataFrame(rows)
-    out_csv   = Path(__file__).parent / "csv3" / "3metrics_bm25_llm.csv"
-    metric_df.to_csv(out_csv, index=False)
-    print(f"\nSaved per‐paragraph metrics to {out_csv}")
-
-    avg = metric_df.mean(numeric_only=True).round(4)
-    print("\nAverage metrics:\n", avg)
+    # 3) Save CSV
+    out_path = Path(__file__).parent / "csv4" / "4metrics_rrf_llm_working1.csv"
+    out_path.parent.mkdir(exist_ok=True)
+    metric_df.to_csv(out_path, index=False)
 
 if __name__ == "__main__":
     try:

@@ -6,6 +6,10 @@ from pathlib import Path
 from typing import List
 import torch
 import pandas as pd
+
+os.environ["TRANSFORMERS_NO_ADA"] = "1"      # disable SDPA integration in Transformers
+torch.backends.cuda.sdp_enabled = False      # disable structured dot-product attention in PyTorch
+
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 from transformers import BitsAndBytesConfig
 
@@ -141,35 +145,76 @@ def rerank_batch(
         # torch.cuda.synchronize()
 
         # Extract JSON object containing pid + score
-        m = _JSON_RE.search(raw)
-        if m:
-            json_text = m.group(1)                   
-        else:
-            # fallback: collect every standalone {...} object
-            objs = re.findall(r'\{[^{}]+\}', raw)
-            if not objs:
-                raise RerankError(
-                    f"No JSON object found in LLM output (first 300 chars):\n{raw[:300]}")
-            json_text = "[" + ",".join(objs) + "]"    # wrap → valid JSON array
+        max_retry = 3             
+        todo      = set(part["pid"].astype(str))
 
-        # Remove any stray trailing commas before ] or }
-        tidy = re.sub(r",\s*(?=[\]\}])", "", json_text)            # remove trailing commas
-        tidy = re.sub(r'"pid"\s*:\s*([0-9]+)', r'"pid":"\1"', tidy) # ensure pid quoted
+        batch_scores = []
 
-        # Parse
-        try:
-            rec = json.loads(tidy)
-        except Exception as e:
-            raise RerankError(f"JSON parse failed: {e}\nSnippet:\n{tidy[:200]}")
+        for attempt in range(1, max_retry + 1):
 
-        df = pd.DataFrame(rec)
-        if {"pid", "score"} - set(df.columns):
-            raise RerankError("Expected 'pid' and 'score' fields in JSON.")
+            raw_out = _gen(prompt)[0]["generated_text"]
+            raw     = re.sub(r"<\|(?:eot_id|eom_id)\|>.*$", "", raw_out,
+                            flags=re.DOTALL).strip()
 
-        df["pid"] = df["pid"].astype(str)
-        df["score"] = pd.to_numeric(df["score"], errors="coerce")
+            # Extract JSON array
+            m = _JSON_RE.search(raw)
+            if not m:
+                 # fallback: collect every standalone {...} object
+                objs = re.findall(r'\{[^{}]+\}', raw)
+                if not objs:
+                    logging.warning("Attempt %d: no JSON found", attempt)
+                    continue
+                json_text = "[" + ",".join(objs) + "]" # wrap → valid JSON array
+            else:
+                json_text = m.group(1)
 
-        all_scores.append(df[["pid","score"]])
+            # Remove any stray trailing commas before ] or }
+            tidy = re.sub(r",\s*(?=[\]\}])", "", json_text)
+            tidy = re.sub(r'"pid"\s*:\s*([0-9]+)', r'"pid":"\1"', tidy)
+
+            # Parse
+            try:
+                rec = json.loads(tidy)
+            except Exception as e:
+                logging.warning("Attempt %d: JSON parse fail: %s", attempt, e)
+                continue
+
+            df = pd.DataFrame(rec)
+            if {"pid", "score"} - set(df.columns):
+                logging.warning("Attempt %d: missing pid/score keys", attempt)
+                continue
+
+            df["pid"]   = df["pid"].astype(str)
+            df["score"] = pd.to_numeric(df["score"], errors="coerce")
+
+            batch_scores.append(df)
+            todo -= set(df["pid"])
+
+            if not todo:          # all three (or fewer) were scored
+                break
+
+            # build a shrink-prompt only for still-missing items 
+            logging.info("Retry %d: %d pids still un-scored", attempt, len(todo))
+            part = candidates[candidates["pid"].astype(str).isin(todo)]
+            cand_block = "\n\n".join(
+                f"PID: {r.pid}\nTitle: {r.title}\nAbstract: {r.abstract}"
+                for _, r in part.iterrows()
+            )
+            sys_prompt = (
+                _PROMPT_TMPL
+                .replace("<<<PARAGRAPH>>>", paragraph.strip())
+                .replace("<<<CANDIDATES>>>", cand_block)
+            )
+            prompt = wrap_prompt(sys_prompt)
+
+        #  pad any survivors with score 0.00 
+        if todo:
+            logging.warning("Padding %d still-missing pids with 0.00", len(todo))
+            batch_scores.append(
+                pd.DataFrame({"pid": list(todo), "score": [0.00]*len(todo)})
+            )
+
+        all_scores.append(pd.concat(batch_scores, ignore_index=True)[["pid","score"]])
 
     if not all_scores:
         raise RerankError("No valid batches returned")
@@ -179,13 +224,14 @@ def rerank_batch(
     # print("\n[DEBUG] raw scores:\n", scores.to_string(index=False))
     result = (
         candidates.assign(pid=candidates["pid"].astype(str))
-        .merge(scores, on="pid", how="inner")
+        .merge(scores, on="pid", how="left")      # every pid now has a score
+        .fillna({"score": 0.00})                  # safety net
         .sort_values("score", ascending=False)
-        .head(k)
     )
 
-    logging.debug("Top-k after rerank:\n%s", result[["pid", "score"]].to_string(index=False))
-    return result
+    if len(result) < k:   # shouldn’t happen, but double-sure
+        logging.warning("Only %d scored rows; padding to %d", len(result), k)
+    return result.head(k)
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
