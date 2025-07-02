@@ -28,10 +28,10 @@ FULLTEXT_INDEX = "paper_fulltext"
 
 # default hyper parameters
 defaults = {
-    "k_full_bm25": 40,
-    "k_full_vec": 40,
-    "k_chunk_bm25": 10,
-    "k_chunk_vec": 10,
+    "k_full_bm25": 80,
+    "k_full_vec": 80,
+    "k_chunk_bm25": 20,
+    "k_chunk_vec": 20,
     "sim_threshold": 0.30,
 }      
 

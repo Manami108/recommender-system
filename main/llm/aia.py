@@ -22,7 +22,7 @@ _MODEL_ID  = os.getenv("LLAMA_MODEL",  "meta-llama/Meta-Llama-3.1-8B-Instruct")
 # https://medium.com/@tahirbalarabe2/prompt-engineering-with-llama-3-3-032daa5999f7
 # https://www.kaggle.com/code/manojsrivatsav/prompt-engineering-with-llama-3-1-8b
 
-_PROMPT_PATH = Path(__file__).parent / "prompts" / "working3.prompt"
+_PROMPT_PATH = Path(__file__).parent / "prompts" / "normal.prompt"
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 

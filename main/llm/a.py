@@ -22,7 +22,7 @@ _MODEL_ID  = os.getenv("LLAMA_MODEL",  "meta-llama/Meta-Llama-3.1-8B-Instruct")
 # https://medium.com/@tahirbalarabe2/prompt-engineering-with-llama-3-3-032daa5999f7
 # https://www.kaggle.com/code/manojsrivatsav/prompt-engineering-with-llama-3-1-8b
 
-_PROMPT_PATH = Path(__file__).parent / "prompts" / "working3.prompt"
+_PROMPT_PATH = Path(__file__).parent / "prompts" / "working1.prompt"
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -136,7 +136,7 @@ def rerank_batch(
         raw = re.sub(r"<\|(?:eot_id|eom_id)\|>.*$", "", raw_out, flags=re.DOTALL).strip()
         # print("prompt tokens:", len(_tok(prompt).input_ids))
         # print("max_new_tokens:", max_gen_this_call)
-        # print(raw_out)   # full, or at least first 800 chars
+        print(raw_out)   # full, or at least first 800 chars
         # print("[checkpoint] after prompt")      # already prints prompt
         # torch.cuda.synchronize()
         # print("[checkpoint] before generate")

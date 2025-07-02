@@ -22,7 +22,7 @@ from recall import (
     fetch_metadata,
     embed,
 )
-from a import rerank_batch, RerankError  # returns DataFrame with pid, score
+from ai import rerank_batch, RerankError  # returns DataFrame with pid, score
 import matplotlib.pyplot as plt         
 
 import smtplib
@@ -57,7 +57,7 @@ def send_email(subject: str, body: str):
         print(f"❌ Failed to send email: {e}")
 
 # config
-TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset1.jsonl"))
+TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset4.jsonl"))
 MAX_CASES     = int(os.getenv("MAX_CASES", 50)) # Number of test cases to evaluate
 SIM_THRESHOLD = float(os.getenv("SIM_THRESHOLD", 0.95))
 TOPK_LIST     = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20) # K-values for evaluation metrics
@@ -204,7 +204,7 @@ def main() -> None:
             [str(x) for x in rec.get("references", [])],
             rec.get("year")
         )
-        m["method"] = "rrf_llm_working1"     # or "bm25_full" as you prefer
+        m["method"] = "rrf_llm_working2"     # or "bm25_full" as you prefer
         rows.append(m)
 
     # Build the DataFrame once
@@ -225,11 +225,11 @@ def main() -> None:
         plt.ylabel(prefix)
         plt.grid(True)
         plt.tight_layout()
-        plt.savefig(Path(__file__).parent / "eval" / f"{prefix.lower()}_rrf_llm_working1.png", dpi=200)
+        plt.savefig(Path(__file__).parent / "eval" / f"{prefix.lower()}_rrf_llm_working2.png", dpi=200)
         plt.close()
 
     # 3) Save CSV
-    out_path = Path(__file__).parent / "csv1" / "1metrics_rrf_llm_working1.csv"
+    out_path = Path(__file__).parent / "csv4" / "4metrics_rrf_llm_working2.csv"
     out_path.parent.mkdir(exist_ok=True)
     metric_df.to_csv(out_path, index=False)
 

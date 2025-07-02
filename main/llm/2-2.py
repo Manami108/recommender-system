@@ -22,7 +22,7 @@ from recall import (
     fetch_metadata,
     embed,
 )
-from a import rerank_batch, RerankError  # returns DataFrame with pid, score
+from aia import rerank_batch, RerankError  # returns DataFrame with pid, score
 import matplotlib.pyplot as plt         
 
 import smtplib
@@ -204,7 +204,7 @@ def main() -> None:
             [str(x) for x in rec.get("references", [])],
             rec.get("year")
         )
-        m["method"] = "rrf_llm_working1"     # or "bm25_full" as you prefer
+        m["method"] = "rrf_llm_normal"     # or "bm25_full" as you prefer
         rows.append(m)
 
     # Build the DataFrame once
@@ -225,11 +225,11 @@ def main() -> None:
         plt.ylabel(prefix)
         plt.grid(True)
         plt.tight_layout()
-        plt.savefig(Path(__file__).parent / "eval" / f"{prefix.lower()}_rrf_llm_working1.png", dpi=200)
+        plt.savefig(Path(__file__).parent / "eval" / f"{prefix.lower()}_rrf_llm_normal.png", dpi=200)
         plt.close()
 
     # 3) Save CSV
-    out_path = Path(__file__).parent / "csv1" / "1metrics_rrf_llm_working1.csv"
+    out_path = Path(__file__).parent / "csv1" / "1metrics_rrf_llm_normal.csv"
     out_path.parent.mkdir(exist_ok=True)
     metric_df.to_csv(out_path, index=False)
 
