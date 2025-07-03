@@ -7,18 +7,15 @@ import time
 
 # List of scripts to run in order
 scripts = [
-    "/home/abhi/Desktop/Manami/recommender-system/main/llm/2.py",
-    "/home/abhi/Desktop/Manami/recommender-system/main/llm/3.py",
-    "/home/abhi/Desktop/Manami/recommender-system/main/llm/4.py",
-    "/home/abhi/Desktop/Manami/recommender-system/main/llm/5.py",
+    "/home/abhi/Desktop/Manami/recommender-system/main/llm/eval_ctx_llm.py",
     "/home/abhi/Desktop/Manami/recommender-system/main/llm/2-1.py",
     "/home/abhi/Desktop/Manami/recommender-system/main/llm/3-1.py", 
     "/home/abhi/Desktop/Manami/recommender-system/main/llm/4-1.py",
-    "/home/abhi/Desktop/Manami/recommender-system/main/llm/5-1.py",
+    "/home/abhi/Desktop/Manami/recommender-system/main/llm/5-2.py",
     "/home/abhi/Desktop/Manami/recommender-system/main/llm/2-2.py", 
     "/home/abhi/Desktop/Manami/recommender-system/main/llm/3-2.py",
     "/home/abhi/Desktop/Manami/recommender-system/main/llm/4-2.py",
-    "/home/abhi/Desktop/Manami/recommender-system/main/llm/5-2.py",
+
 ]
 
 # Loop through each script
