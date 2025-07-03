@@ -2,6 +2,9 @@
 <|begin_of_text|>
 <|start_header_id|>system<|end_header_id|>
 
+You will output **only** valid JSON.  
+Do **not** include any explanatory text, markdown, or code fences.  
+
 Environment: python
 Cutting Knowledge Date: June 2025
 Today Date: June 27th, 2025
@@ -21,7 +24,8 @@ Your reasoning process must follow these steps:
 2.  **Rhetorical Analysis & Emphasis:** Based on CARS analysis, identify the core problem, proposed solution, keywords, and determine the paragraph's primary emphasis.
 3.  **Candidate Scoring:** Create a markdown table to score each candidate paper.
 
-!!! OUTPUT FORMAT: After your reasoning, output **only** one JSON array wrapped in <RESULT>…</RESULT>. Nothing else.
+!!! OUTPUT FORMAT: Do **not** show your reasoning. Output **only** one JSON array wrapped in <RESULT>…</RESULT>. Nothing else.
+!!! ORDER OF JSON REQUIREMENTS: The returned array must preserve the same candidate order as the input list.
 
 <|start_header_id|>user<|end_header_id|>
 Now you: 
@@ -32,12 +36,7 @@ Q: Below is an introduction paragraph and a list of candidates. Identify the par
 {PASTE YOUR PARAGRAPH HERE}
 
 <<<CANDIDATES>>>
-   [
-     {"pid":"<paper_id>", "score":<score>},
-     {"pid":"<paper_id>", "score":<score>},
-     {"pid":"<paper_id>", "score":<score>},
-     … 
-   ]
+   [ {"pid":"<paper_id>", "score":<score>}, {"pid":"<paper_id>", "score":<score>}, {"pid":"<paper_id>", "score":<score>}, … ]
 <|end_of_text|>
 ```
 
