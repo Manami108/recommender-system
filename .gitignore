@@ -167,4 +167,5 @@ export_csv
 explanation /
 notUsed
 dataCheck
-eval /
+# ignore eval outputs
+/main/llm/eval/
