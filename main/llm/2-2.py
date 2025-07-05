@@ -59,7 +59,7 @@ def send_email(subject: str, body: str):
 
 
 # config
-TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset2.jsonl"))
+TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset1.jsonl"))
 MAX_CASES     = int(os.getenv("MAX_CASES", 50)) # Number of test cases to evaluate
 SIM_THRESHOLD = float(os.getenv("SIM_THRESHOLD", 0.95))
 TOPK_LIST     = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20) # K-values for evaluation metrics
@@ -71,7 +71,7 @@ _NEO4J_PASS = os.getenv("NEO4J_PASS", "secret")
 _driver     = GraphDatabase.driver(_NEO4J_URI, auth=(_NEO4J_USER, _NEO4J_PASS))
 
 # Tokenizer for chunking
-TOKENIZER  = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct", use_fast=True)
+TOKENIZER  = AutoTokenizer.from_pretrained("meta-llama/Llama-3.2-3B-Instruct", use_fast=True)
 
 # cosine similarity 
 def cosine_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
@@ -120,20 +120,20 @@ def evaluate_case(
         cand = cand[cand["year"] < target_year]
     if cand.empty:
         raise ValueError("Empty candidate set after filtering by year & abstract")
-
+    
+    rerank_failed = False
     # 4. rerank via LLM scoring
     try:
-        llm_df = sliding_score(paragraph,            # ← returns pid, score
-                              cand[["pid", "title", "abstract"]],
-                              window_size=5,
-                              stride=1)    # keep up to 20
+        llm_df = sliding_score(
+            paragraph,
+            cand[["pid", "title", "abstract"]],
+        )
 
         # bring RRF metrics in for tie-breaking
         llm_df = (
             llm_df
             .merge(pool[["pid", "rrf_rank"]], on="pid", how="left")
         )
-
         # sort: 1) LLM score ↓  2) rrf_rank ↑
         llm_df = llm_df.sort_values(
             by=["score", "rrf_rank"],
@@ -145,8 +145,8 @@ def evaluate_case(
         predicted = llm_df["pid"].tolist()
 
     except RerankError as e:
+        rerank_failed = True
         print("⚠️  Rerank failed, using RRF order:", e)
-        # pool is already sorted by rrf_score desc inside rrf_fuse
         predicted = pool["pid"].tolist()
 
     # embed references & predicted candidates
@@ -191,7 +191,9 @@ def evaluate_case(
         idcg = sum(1 / np.log2(i + 2) for i in range(min(n_rel, k)))
         ndcg = (dcg / idcg) if idcg else 0.0
         out.update({f"P@{k}": p_at_k, f"HR@{k}": hr_at_k, f"R@{k}": r_at_k, f"NDCG@{k}": ndcg})
+    out["rerank_failed"] = rerank_failed
     return out
+
 
 # main function
 # Runs evaluation over the test cases and prints the average metrics.
@@ -207,7 +209,7 @@ def main() -> None:
             [str(x) for x in rec.get("references", [])],
             rec.get("year")
         )
-        m["method"] = "rrf_llm_working2"     # or "bm25_full" as you prefer
+        m["method"] = "rrf_llm_working22"     # or "bm25_full" as you prefer
         rows.append(m)
 
     # Build the DataFrame once
@@ -228,19 +230,19 @@ def main() -> None:
         plt.ylabel(prefix)
         plt.grid(True)
         plt.tight_layout()
-        plt.savefig(Path(__file__).parent / "eval" / f"{prefix.lower()}_rrf_llm_working2.png", dpi=200)
+        plt.savefig(Path(__file__).parent / "eval" / f"{prefix.lower()}_rrf_llm_working22.png", dpi=200)
         plt.close()
 
     # 3) Save CSV
-    out_path = Path(__file__).parent / "csv2" / "2metrics_rrf_llm_working2.csv"
+    out_path = Path(__file__).parent / "csv1" / "1metrics_rrf_llm_working22.csv"
     out_path.parent.mkdir(exist_ok=True)
     metric_df.to_csv(out_path, index=False)
 
 if __name__ == "__main__":
     try:
         main()
-        send_email("✅ Script completed", "Your reranking script finished successfully. 2metrics_rrf_llm_working2.csv")
+        send_email("✅ Script completed", "Your reranking script finished successfully. 1metrics_rrf_llm_working22.csv")
     except Exception as e:
-        send_email("❌ Script failed", f"Your reranking script failed with error:\n\n{e} 2metrics_rrf_llm_working2.csv")
+        send_email("❌ Script failed", f"Your reranking script failed with error:\n\n{e} 1metrics_rrf_llm_working22.csv")
         raise  # re-raise the error for visibility
 
