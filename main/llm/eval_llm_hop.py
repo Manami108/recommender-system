@@ -24,8 +24,8 @@ from recall   import (
     fetch_metadata,
     embed,
 )
-from rerank_llm    import rerank_batch, RerankError
-from hop_reasoning import multi_hop_topic_citation_reasoning   # <<< hop >>>
+from rerank_llm import sliding_score, RerankError
+from hop_reasoning import multi_hop_topic_citation_reasoning
 
 
 import smtplib
@@ -64,15 +64,15 @@ def send_email(subject: str, body: str):
 # config
 TESTSET_PATH = Path(os.getenv(
     "TESTSET_PATH",
-    "/home/abhi/Desktop/Manami/recommender-system/datasets/testset2.jsonl"))
+    "/home/abhi/Desktop/Manami/recommender-system/datasets/testset1.jsonl"))
 MAX_CASES  = int(os.getenv("MAX_CASES", 50))
 TOPK_LIST  = tuple(range(1, 21))
 SIM_THRESH = 0.95
 
 RRF_TOPK       = 40  # keep top 20 seeds after RRF fusion
-HOP_TOP_N      = 3   # retrieve up to 20 hop papers per seed
+HOP_TOP_N      = 1   # retrieve up to 20 hop papers per seed
 FINAL_POOL_CAP = 120  # cap total pool size before final LLM
-LLM_TOPK       = 40  # final list size
+LLM_TOPK       = max(TOPK_LIST)  # final list size
 
 TOKENIZER = AutoTokenizer.from_pretrained(
     "meta-llama/Meta-Llama-3.1-8B-Instruct", use_fast=True)
@@ -134,52 +134,47 @@ def evaluate_case(
     if target_year is not None:
         meta_pool = meta_pool[meta_pool.year < target_year]
 
-    #  rerank via LLM scoring
+    # LLM-based reranking via sliding_score
     try:
-        # meta_pool = metadata for every candidate paper
-        llm_df = rerank_batch(
+        llm_df = sliding_score(
             paragraph,
-            meta_pool[["pid", "title", "abstract"]],
-            k=LLM_TOPK,                      # how many to keep
-        )                                   # → columns: pid, score
-
-        # add the RRF rank of each seed for deterministic tie-breaking
+            meta_pool[["pid", "title", "abstract"]]
+        )
+        # keep top LLM_TOPK
+        llm_df = llm_df.nlargest(LLM_TOPK, "score")
+        # merge RRF rank for tie-breaking
         llm_df = llm_df.merge(
-            seeds_df[["pid", "rrf_rank"]],
-            on="pid",
-            how="left",
+            seeds_df[["pid", "rrf_rank"]], on="pid", how="left"
         )
-
         llm_df = llm_df.sort_values(
-            ["score", "rrf_rank"],        # score ↓ , rrf_rank ↑
-            ascending=[False, True],
-            kind="mergesort",
+            ["score", "rrf_rank"], ascending=[False, True], kind="mergesort"
         )
-
-        final_ids = llm_df["pid"].tolist()
-
+        final_ids = llm_df.pid.tolist()
     except RerankError as e:
-        logging.warning("⚠️ Rerank failed, falling back to RRF order: %s", e)
-        final_ids = seeds_df["pid"].tolist()
-
+        logging.warning("⚠️ sliding_score failed, falling back to RRF seeds: %s", e)
+        final_ids = seeds_df.pid.tolist()
 
     # embed references & predicted candidates
     # Calculates cosine similarities between reranked abstracts and true references.
     # For each predicted paper, checks if any unmatched reference has sim ≥ 0.95 → it's a hit.
-    refs     = fetch_metadata(gold_pids).dropna(subset=["abstract"])
-    ref_ids  = refs.pid.tolist()
-    ref_emb  = np.stack([embed(a) for a in refs.abstract]) if ref_ids else np.zeros((0,768))
-    cand_emb = np.stack([embed(a) for a in meta_pool.set_index("pid").loc[final_ids].abstract])
+    refs = fetch_metadata(gold_pids).dropna(subset=["abstract"])
+    ref_ids = refs.pid.tolist()
+    ref_emb = np.stack([embed(a) for a in refs.abstract]) if ref_ids else np.zeros((0,768))
+    cand_abstracts = meta_pool.set_index("pid").loc[final_ids].abstract
+    cand_emb = np.stack([embed(a) for a in cand_abstracts])
 
     # greedy match for hit detection
     sims = cosine_matrix(cand_emb, ref_emb) if ref_ids else np.zeros((len(final_ids),0))
     unmatched, hits = set(range(len(ref_ids))), []
     for i in range(len(final_ids)):
-        if not unmatched: hits.append(False); continue
+        if not unmatched:
+            hits.append(False)
+            continue
         idxs = list(unmatched)
         j = sims[i, idxs].argmax()
         if sims[i, idxs][j] >= SIM_THRESH:
-            hits.append(True); unmatched.remove(idxs[j])
+            hits.append(True)
+            unmatched.remove(idxs[j])
         else:
             hits.append(False)
 
@@ -197,6 +192,7 @@ def evaluate_case(
         dcg  = sum(r/math.log2(i+2) for i,r in enumerate(topk))
         idcg = sum(1/math.log2(i+2) for i in range(min(n_rel,k)))
         out[f"NDCG@{k}"] = dcg/idcg if idcg else 0.0
+    out["method"] = "rrf_hop1_llm"
     return out
 
 import matplotlib
@@ -206,29 +202,24 @@ matplotlib.use("Agg")          # off-screen backend
 def main() -> None:
     df = pd.read_json(TESTSET_PATH, lines=True).head(MAX_CASES)
     rows: list[dict] = []
-
-    # single pass over all paragraphs
     for rec in df.to_dict("records"):
         m = evaluate_case(
             rec["paragraph"],
             [str(pid) for pid in rec.get("references", [])],
-            rec.get("year")
+            rec.get("year"),
         )
-        m["method"] = "rrf_hop_llm"        # tag this run
         rows.append(m)
 
-    # build DataFrame once
     metric_df = pd.DataFrame(rows)
 
     # 1) console average
     print("\nRRF → hop → LLM (k=20) average metrics:\n")
     print(metric_df.mean(numeric_only=True).round(4))
 
-    # 2) aggregate curves
+    # Plot metrics vs k
     ks = np.array(TOPK_LIST)
     save_dir = Path(__file__).parent / "eval"
     save_dir.mkdir(exist_ok=True)
-
     for prefix in ["P", "HR", "R", "NDCG"]:
         y = metric_df[[f"{prefix}@{k}" for k in ks]].mean().values
         plt.figure()
@@ -238,19 +229,29 @@ def main() -> None:
         plt.ylabel(prefix)
         plt.grid(True)
         plt.tight_layout()
-        plt.savefig(save_dir / f"{prefix.lower()}_rrf_hop_llm.png", dpi=200)
+        plt.savefig(save_dir / f"{prefix.lower()}_rrf_hop1_llm.png", dpi=200)
         plt.close()
 
     # 3) persist CSV
-    csv_dir = Path(__file__).parent / "csv2"
+    csv_dir = Path(__file__).parent / "csv1"
     csv_dir.mkdir(exist_ok=True)
-    metric_df.to_csv(csv_dir / "2metrics_rrf_hop_llm.csv", index=False)
+    out_path = csv_dir / "1metrics_rrf_hop1_llm.csv"
+    metric_df.to_csv(out_path, index=False)
+
+    # Notification
+    send_email(
+        "✅ eval_rrf_hop1_llm completed",
+        f"Your reranking script finished successfully. Metrics saved to {out_path}"
+    )
 
 if __name__ == "__main__":
     try:
         main()
-        send_email("✅ Script completed", "Your reranking script finished successfully.")
     except Exception as e:
-        send_email("❌ Script failed", f"Your reranking script failed with error:\n\n{e}")
-        raise  # re-raise the error for visibility
+        send_email(
+            "❌ eval_rrf_hop1_llm failed",
+            f"Your reranking script failed with error:\n\n{e}"
+        )
+        raise
+
 
