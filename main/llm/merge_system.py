@@ -16,11 +16,10 @@ os.makedirs(eval_dir, exist_ok=True)
 suffixes = [
     "metrics_bm25.csv",
     "metrics_rrf.csv",
-    "metrics_rrf_llm_working22.csv",
     "metrics_rrf_llm_working32.csv",
 ]
 
-# 1) Merge per suffix across csv1-4 and save to csv_final
+# 1) Merge per suffix across csv1-4, drop failures only if that column exists, then save
 for suffix in suffixes:
     dfs = []
     for i, d in enumerate(csv_dirs, start=1):
@@ -31,24 +30,37 @@ for suffix in suffixes:
             dfs.append(df)
         else:
             print(f"Warning: {path} not found")
-    if dfs:
-        merged = pd.concat(dfs, ignore_index=True)
-        out_path = os.path.join(csv_final_dir, suffix)
-        merged.to_csv(out_path, index=False)
+    if not dfs:
+        continue
 
-# 2) Plot comparison of the four merged results
-#    Read each merged CSV, label by method (suffix without extension)
+    merged = pd.concat(dfs, ignore_index=True)
+
+    # If this merged set has rerank_failed, drop those rows
+    if "rerank_failed" in merged.columns:
+        before = len(merged)
+        merged = merged[merged["rerank_failed"] == False]
+        after = len(merged)
+        print(f"{suffix}: Dropped {before - after} rows where rerank_failed == True")
+
+    out_path = os.path.join(csv_final_dir, suffix)
+    merged.to_csv(out_path, index=False)
+
+# 2) Read each merged CSV, label by method (suffix without extension)
 dfs = []
 for suffix in suffixes:
     path = os.path.join(csv_final_dir, suffix)
     method = os.path.splitext(suffix)[0]
+    if not os.path.exists(path):
+        print(f"Warning: {path} not found, skipping")
+        continue
     df = pd.read_csv(path)
     df["method"] = method
     dfs.append(df)
 
+# 3) Concatenate all methods into one DataFrame for plotting
 all_df = pd.concat(dfs, ignore_index=True)
 
-# Melt & split metric and k
+# 4) Melt & split metric and k
 melted = all_df.melt(
     id_vars=["method"],
     var_name="metric_at_k",
@@ -58,7 +70,7 @@ melted[["metric", "k"]] = melted["metric_at_k"].str.split("@", expand=True)
 melted = melted.dropna(subset=["k"])
 melted["k"] = melted["k"].astype(int)
 
-# Plot each metric comparing the four methods
+# 5) Plot each metric comparing the methods
 for metric in ["P", "R", "HR", "NDCG"]:
     dfm = (
         melted[melted.metric == metric]

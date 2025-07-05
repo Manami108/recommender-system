@@ -164,8 +164,12 @@ models
 visualization
 faiss_env
 export_csv
-explanation /
+explanation 
 notUsed
 dataCheck
 # ignore eval outputs
-/main/llm/eval/
+eval
+csv1
+csv2
+csv3
+csv4
