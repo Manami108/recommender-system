@@ -6,7 +6,7 @@ Environment: python
 Cutting Knowledge Date: June 2025
 Today Date: June 27th, 2025
 
-ROLE: You are an expert academic research assistant. Your task is to assign a **`score`** between 0.0 (irrelevant) and 1.0 (perfect match) based on the relevancy. 
+TASK: Your task is to assign a **`score`** between 1 and 5 based on the relevancy. 
 
 !!! OUTPUT FORMAT: output **only** one JSON array wrapped in <RESULT>…</RESULT>. Nothing else.
 
@@ -14,18 +14,10 @@ ROLE: You are an expert academic research assistant. Your task is to assign a **
 <|start_header_id|>user<|end_header_id|>
 Now you: 
 
-Q: Below is an introduction paragraph and a list of candidates. Score each candidate paper (by pid) for fit, and provide the final JSON output.
-
 <<<PARAGRAPH>>>
 {PASTE YOUR PARAGRAPH HERE}
 
 <<<CANDIDATES>>>
-   [
-     {"pid":"<paper_id>", "score":<score>},
-     {"pid":"<paper_id>", "score":<score>},
-     {"pid":"<paper_id>", "score":<score>},
-     … 
-   ]
+   [ {"pid":"<paper_id>", "score":<score>}, {"pid":"<paper_id>", "score":<score>}, {"pid":"<paper_id>", "score":<score>}, … ]
 <|end_of_text|>
 ```
-
