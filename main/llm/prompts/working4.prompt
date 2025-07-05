@@ -81,57 +81,6 @@ Let’s think step by step:
 </RESULT>
 ```
 
-EXAMPLE 2:
-Q: Below is an introduction paragraph. Identify its C.A.R.S. move, perform a thematic analysis, then score each candidate paper (by pid) for fit. Show your work.
-
-Paragraph:
-"The promise of CRISPR-Cas9 for therapeutic gene editing is immense, yet its clinical translation is significantly hampered by the potential for off-target mutations, posing serious safety risks. Identifying these unintended edits comprehensively through experimental screening is often resource-intensive and slow. This work, therefore, focuses on developing a highly accurate computational framework for predicting off-target cleavage sites. Our primary objective is to create a reliable in-silico prescreening tool to accelerate the development and improve the safety profile of future gene therapies."
-
-Candidates:
-[
-  {
-    "pid": "G1",
-    "title": "Machine-Learning Prediction of CRISPR Off-Target Hotspots in Therapeutic Contexts",
-    "abstract": "We present a gradient-boosting model that predicts CRISPR off-target hotspots across diverse genomic backgrounds. Although trained mainly on bacterial datasets, the model shows promise for human gene-therapy pipelines..."
-  },
-  {
-    "pid": "G2",
-    "title": "Optimizing Cas9 Variants for Higher On-Target Efficiency in Plant Genomes",
-    "abstract": "Through directed-evolution protein engineering, we develop Cas9 variants that cut plant DNA with 45 % higher efficiency. Off-target assessment is discussed qualitatively but not modeled computationally..."
-  },
-  {
-    "pid": "G3",
-    "title": "A Computational Framework for Urban Traffic Flow Prediction",
-    "abstract": "We propose a computational framework leveraging graph neural networks to forecast urban traffic patterns in real time. Extensive evaluations on city-scale datasets demonstrate improved..."
-  }
-]
-
-Let’s think step by step:
-1. **C.A.R.S. Analysis:**
-   * **Move 1 (Establishing Territory):** The paragraph highlights the vast therapeutic potential of CRISPR-Cas9 gene editing.
-   * **Move 2 (Establishing a Niche):** It pinpoints the safety threat posed by off-target mutations and the impracticality of exhaustive wet-lab screening.
-   * **Move 3 (Occupying the Niche):** It proposes an accurate computational framework to predict off-target cleavage sites and serve as an in-silico prescreening tool.
-
-2. **Thematic Analysis & Emphasis:**
-   * **Core Problem:** Off-target safety risk.
-   * **Proposed Solution:** Accurate in-silico prediction tool.
-   * **Keywords:** CRISPR, therapeutic gene editing, off-target mutations, in-silico prescreening tool. 
-   * **Primary Emphasis:** The paragraph stresses the Problem (safety risk from off-targets) and the creation of a computational solution to mitigate it—making Problem_Score the pivotal scoring dimension.
-
-3. **Candidate Scoring:**
-| pid | Topic_Score  | Problem_Score  | Method_Score  | Final_Score  | Justification                                                                                                                 |
-| --- | ------------ | -------------- | ------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| G1  | 5            | 5              | 4             | **4.6 **     | Strong CRISPR focus and off-target modeling (high Topic & Problem). Method is solidly computational though on non-human data. |
-| G2  | 4            | 1              | 2             | **2.3 **     | Relevant CRISPR context but misaligned problem (on-target efficiency) and non-predictive methods.                             |
-| G3  | 1            | 1              | 1             | **1.0 **     | Unrelated domain and methodology; no alignment on topic, problem, or method.                                                  |
-
-4.
-```json
-<RESULT>
-[ {"pid": "G1", "score": 4.6}, {"pid": "G2", "score": 2.3}, {"pid": "G3", "score": 1.0} ]
-</RESULT>
-```
-
 <|start_header_id|>user<|end_header_id|>
 
 !!! OUTPUT FORMAT: Do **not** show your reasoning. Output **only** one JSON array wrapped in <RESULT>…</RESULT>. Nothing else.
