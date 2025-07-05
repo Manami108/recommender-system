@@ -53,7 +53,7 @@ _mdl = AutoModelForCausalLM.from_pretrained(
     trust_remote_code=True          # avoids class-mismatch errors
 )
 
-MAX_GEN    = 1700 # max tokens to generate per prompt
+MAX_GEN    = 1900 # max tokens to generate per prompt
 BATCH_SIZE = 5 # how many candidates per LLM call
 MAX_POOL   = 200  # cap on total candidates before batching
 TOK_HEAD = _mdl.config.max_position_embeddings - MAX_GEN   # max context tokens (after tokenization)
@@ -91,10 +91,10 @@ def score_window(paragraph: str, candidates: pd.DataFrame) -> pd.DataFrame:
     all_scores: list[pd.DataFrame] = []
     for i in range(0, len(candidates), BATCH_SIZE):
         part = candidates.iloc[i : i + BATCH_SIZE]
-        cand_block = "\\n\\n".join(
-            f"PID: {r.pid}\\nTitle: {r.title}\\nAbstract: {r.abstract}"
+        cand_block = "\n\n".join(                 # real new-lines
+            f"PID: {r.pid}\nTitle: {r.title}\nAbstract: {r.abstract}"
             for _, r in part.iterrows()
-        )
+        )       
         sys_prompt = (
             _PROMPT_TMPL
             .replace("<<<PARAGRAPH>>>", paragraph.strip())
@@ -104,25 +104,47 @@ def score_window(paragraph: str, candidates: pd.DataFrame) -> pd.DataFrame:
         if len(_tok(prompt).input_ids) > TOK_HEAD:
             raise RerankError("Prompt too long; reduce BATCH_SIZE or truncate abstracts")
         raw_out = _gen(prompt)[0]["generated_text"]
-        m = _JSON_RE.search(raw_out)
-        if not m:
-            raise RerankError("Failed to extract JSON from LLM response")
-        tidy = re.sub(r",\\s*(?=[\\]\\}])", "", m.group(1))
-        tidy = re.sub(r'"pid"\\s*:\\s*([0-9]+)', r'"pid":"\\1"', tidy)
-        rec = json.loads(tidy)
+        print(raw_out[:300])  # debug output
+        raw = re.sub(r"<\|(?:eot_id|eom_id)\|>.*$", "", raw_out, flags=re.DOTALL).strip()
+
+        m = _JSON_RE.search(raw)
+        if m:
+            json_text = m.group(1)
+        else:
+            objs = re.findall(r'\{[^{}]+\}', raw)
+            if not objs:
+                raise RerankError(f"No JSON object found in LLM output:\n{raw[:300]}")
+            json_text = "[" + ",".join(objs) + "]"
+
+        tidy = re.sub(r",\s*(?=[\]\}])", "", json_text)
+        tidy = re.sub(r'"pid"\s*:\s*([0-9]+)', r'"pid":"\1"', tidy)
+
+        # repair missing commas between adjacent objects
+        repaired = tidy.replace("}{", "},{")
+
+        try:
+            rec = json.loads(repaired)
+        except json.JSONDecodeError as e:
+            logging.error("LLM raw output:\n%s", raw)
+            logging.error("Tidy snippet:\n%s", tidy)
+            logging.error("Repaired snippet:\n%s", repaired)
+            raise RerankError(f"JSON parse failed: {e}")
+
         df_part = pd.DataFrame(rec)
-        if "pid" not in df_part.columns and "id" in df_part.columns:
-            df_part = df_part.rename(columns={"id": "pid"})
+        if {"pid","score"} - set(df_part.columns):
+            raise RerankError("Expected 'pid' and 'score' in JSON output")
+
         df_part["pid"] = df_part["pid"].astype(str)
         df_part["score"] = pd.to_numeric(df_part["score"], errors="coerce").fillna(0.0)
-        all_scores.append(df_part[["pid", "score"]])
+        all_scores.append(df_part[["pid","score"]])
+        
     return pd.concat(all_scores, ignore_index=True)
 
 def sliding_score(
     paragraph: str,
     all_cands: pd.DataFrame,
     window_size: int = 5,
-    stride: int = 2,
+    stride: int = 1,
 ) -> pd.DataFrame:
     scores_accum = defaultdict(list)
 
