@@ -30,7 +30,7 @@ _MODEL_ID  = os.getenv("LLAMA_MODEL",  "meta-llama/Meta-Llama-3.1-8B-Instruct")
 # https://dev.to/simplr_sh/llm-re-ranking-enhancing-search-and-retrieval-with-ai-28b7
 # https://blog.reachsumit.com/posts/2023/12/prompting-llm-for-ranking/#fn:8
 
-_PROMPT_PATH = Path(__file__).parent / "prompts" / "working3.prompt"
+_PROMPT_PATH = Path(__file__).parent / "prompts" / "working2.prompt"
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 

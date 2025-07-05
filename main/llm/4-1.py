@@ -59,7 +59,7 @@ def send_email(subject: str, body: str):
 
 
 # config
-TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset1.jsonl"))
+TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset4.jsonl"))
 MAX_CASES     = int(os.getenv("MAX_CASES", 50)) # Number of test cases to evaluate
 SIM_THRESHOLD = float(os.getenv("SIM_THRESHOLD", 0.95))
 TOPK_LIST     = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20) # K-values for evaluation metrics
@@ -232,15 +232,15 @@ def main() -> None:
         plt.close()
 
     # 3) Save CSV
-    out_path = Path(__file__).parent / "csv1" / "1metrics_rrf_llm_working3.csv"
+    out_path = Path(__file__).parent / "csv4" / "4metrics_rrf_llm_working3.csv"
     out_path.parent.mkdir(exist_ok=True)
     metric_df.to_csv(out_path, index=False)
 
 if __name__ == "__main__":
     try:
         main()
-        send_email("✅ Script completed", "Your reranking script finished successfully. 1metrics_rrf_llm_working3.csv")
+        send_email("✅ Script completed", "Your reranking script finished successfully. 4metrics_rrf_llm_working3.csv")
     except Exception as e:
-        send_email("❌ Script failed", f"Your reranking script failed with error:\n\n{e} 1metrics_rrf_llm_working3.csv")
+        send_email("❌ Script failed", f"Your reranking script failed with error:\n\n{e} 4metrics_rrf_llm_working3.csv")
         raise  # re-raise the error for visibility
 
