@@ -7,23 +7,15 @@ import time
 
 # List of scripts to run in order
 scripts = [
-    "/home/abhi/Desktop/Manami/recommender-system/main/llm/eval_bm25.py",
-    "/home/abhi/Desktop/Manami/recommender-system/main/llm/eval_rrf.py",
-    "/home/abhi/Desktop/Manami/recommender-system/main/llm/eval_llm_bm25.py",
     "/home/abhi/Desktop/Manami/recommender-system/main/llm/eval_ctx_llm.py",
-    "/home/abhi/Desktop/Manami/recommender-system/main/llm/eval_hop_analysis.py",
-    "/home/abhi/Desktop/Manami/recommender-system/main/llm/1.py", 
-    "/home/abhi/Desktop/Manami/recommender-system/main/llm/2.py",
-    "/home/abhi/Desktop/Manami/recommender-system/main/llm/3.py",
-    "/home/abhi/Desktop/Manami/recommender-system/main/llm/4.py", 
-    "/home/abhi/Desktop/Manami/recommender-system/main/llm/5.py",
-    "/home/abhi/Desktop/Manami/recommender-system/main/llm/6.py",
-    "/home/abhi/Desktop/Manami/recommender-system/main/llm/7.py",
-    "/home/abhi/Desktop/Manami/recommender-system/main/llm/8.py",
-    "/home/abhi/Desktop/Manami/recommender-system/main/llm/9.py", 
-    "/home/abhi/Desktop/Manami/recommender-system/main/llm/10.py",      
-    # "/home/abhi/Desktop/Manami/recommender-system/main/llm/eval_llm_hop.py",
-    # "/home/abhi/Desktop/Manami/recommender-system/main/llm/eval_prompt_analysis.py",
+    "/home/abhi/Desktop/Manami/recommender-system/main/llm/2-1.py",
+    "/home/abhi/Desktop/Manami/recommender-system/main/llm/3-1.py", 
+    "/home/abhi/Desktop/Manami/recommender-system/main/llm/4-1.py",
+    "/home/abhi/Desktop/Manami/recommender-system/main/llm/5-2.py",
+    "/home/abhi/Desktop/Manami/recommender-system/main/llm/2-2.py", 
+    "/home/abhi/Desktop/Manami/recommender-system/main/llm/3-2.py",
+    "/home/abhi/Desktop/Manami/recommender-system/main/llm/4-2.py",
+
 ]
 
 # Loop through each script
