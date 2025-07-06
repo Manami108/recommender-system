@@ -136,6 +136,7 @@ def evaluate_case(
 
     # LLM-based reranking via sliding_score
     try:
+        rerank_failed = False
         llm_df = sliding_score(
             paragraph,
             meta_pool[["pid", "title", "abstract"]]
@@ -192,7 +193,8 @@ def evaluate_case(
         dcg  = sum(r/math.log2(i+2) for i,r in enumerate(topk))
         idcg = sum(1/math.log2(i+2) for i in range(min(n_rel,k)))
         out[f"NDCG@{k}"] = dcg/idcg if idcg else 0.0
-    out["method"] = "rrf_hop1_llm"
+    out["method"]        = "rrf_hop1_llm"
+    out["rerank_failed"] = rerank_failed
     return out
 
 import matplotlib
