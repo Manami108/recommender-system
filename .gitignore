@@ -164,7 +164,7 @@ models
 visualization
 faiss_env
 export_csv
-explanation 
+explanation /
 notUsed
 dataCheck
 # ignore eval outputs
