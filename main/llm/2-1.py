@@ -70,7 +70,7 @@ TOPK_LIST  = tuple(range(1, 21))
 SIM_THRESH = 0.95
 
 RRF_TOPK       = 40  # keep top 20 seeds after RRF fusion
-HOP_TOP_N      = 1   # retrieve up to 20 hop papers per seed
+HOP_TOP_N      = 2   # retrieve up to 20 hop papers per seed
 FINAL_POOL_CAP = 120  # cap total pool size before final LLM
 LLM_TOPK       = max(TOPK_LIST)  # final list size
 
@@ -193,7 +193,7 @@ def evaluate_case(
         dcg  = sum(r/math.log2(i+2) for i,r in enumerate(topk))
         idcg = sum(1/math.log2(i+2) for i in range(min(n_rel,k)))
         out[f"NDCG@{k}"] = dcg/idcg if idcg else 0.0
-    out["method"]        = "rrf_hop1_llm"
+    out["method"]        = "rrf_hop2_llm"
     out["rerank_failed"] = rerank_failed
     return out
 
@@ -231,18 +231,18 @@ def main() -> None:
         plt.ylabel(prefix)
         plt.grid(True)
         plt.tight_layout()
-        plt.savefig(save_dir / f"{prefix.lower()}_rrf_hop1_llm.png", dpi=200)
+        plt.savefig(save_dir / f"{prefix.lower()}_rrf_hop2_llm.png", dpi=200)
         plt.close()
 
     # 3) persist CSV
     csv_dir = Path(__file__).parent / "csv2"
     csv_dir.mkdir(exist_ok=True)
-    out_path = csv_dir / "2metrics_rrf_hop1_llm.csv"
+    out_path = csv_dir / "2metrics_rrf_hop2_llm.csv"
     metric_df.to_csv(out_path, index=False)
 
     # Notification
     send_email(
-        "✅ eval_rrf_hop1_llm completed",
+        "✅ eval_rrf_hop2_llm completed",
         f"Your reranking script finished successfully. Metrics saved to {out_path}"
     )
 
@@ -251,7 +251,7 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         send_email(
-            "❌ eval_rrf_hop1_llm failed",
+            "❌ eval_rrf_hop2_llm failed",
             f"Your reranking script failed with error:\n\n{e}"
         )
         raise
