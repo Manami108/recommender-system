@@ -24,9 +24,9 @@ from recall_user_study import (
 from rerank_llm import sliding_score, RerankError
 
 # Configuration
-INPUT_JSONL    = Path(os.getenv("INPUT_JSONL", "/home/abhi/Desktop/Manami/recommender-system/datasets/user_study.jsonl"))
-OUTPUT_CSV     = Path(os.getenv("OUTPUT_CSV", "/home/abhi/Desktop/Manami/recommender-system/datasets/user_study_recommendations.csv"))
-TOP_K          = int(os.getenv("TOP_K", 10))
+INPUT_JSONL    = Path(os.getenv("INPUT_JSONL", "/home/abhi/Desktop/Manami/recommender-system/datasets/user_studies/manami.jsonl"))
+OUTPUT_CSV     = Path(os.getenv("OUTPUT_CSV", "/home/abhi/Desktop/Manami/recommender-system/datasets/user_studies/manami_recommendations.csv"))
+TOP_K          = int(os.getenv("TOP_K", 15))
 MAX_RRF_CAND   = int(os.getenv("MAX_RRF_CAND", 40))
 LLAMA_MODEL    = os.getenv("LLAMA_MODEL", "meta-llama/Meta-Llama-3.1-8B-Instruct")
 DEVICE         = torch.device("cuda" if torch.cuda.is_available() else "cpu")
