@@ -168,4 +168,11 @@ explanation /
 notUsed
 dataCheck
 # ignore eval outputs
-/main/llm/eval/
+eval
+csv1
+csv2
+csv3
+csv4
+
+/datasets/user_study.jsonl
+/datasets/user_study_recommendations.csv

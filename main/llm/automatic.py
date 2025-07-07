@@ -7,10 +7,10 @@ import time
 
 # List of scripts to run in order
 scripts = [
-    # "/home/abhi/Desktop/Manami/recommender-system/main/llm/5-2.py",
-    # "/home/abhi/Desktop/Manami/recommender-system/main/llm/2-2.py", 
+    "/home/abhi/Desktop/Manami/recommender-system/main/llm/2-2.py", 
     # "/home/abhi/Desktop/Manami/recommender-system/main/llm/3-2.py",
     "/home/abhi/Desktop/Manami/recommender-system/main/llm/4-2.py",
+    # "/home/abhi/Desktop/Manami/recommender-system/main/llm/5-2.py",
     "/home/abhi/Desktop/Manami/recommender-system/main/llm/eval_llm_hop.py",
     "/home/abhi/Desktop/Manami/recommender-system/main/llm/2-1.py",
     "/home/abhi/Desktop/Manami/recommender-system/main/llm/3-1.py", 
