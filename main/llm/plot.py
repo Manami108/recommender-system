@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # === CONFIGURATION ===
-INCLUDE_METHODS = ["metrics_bm25", "metrics_rrf_llm_working32", "metrics_rrf_pure_llama", "metrics_rrf"]  # ← just fill in the ones you want
+INCLUDE_METHODS = ["metrics_rrf_hop1_llm", "metrics_rrf_llm_working32"]  # ← just fill in the ones you want
 
 base_dir      = "/home/abhi/Desktop/Manami/recommender-system/main/llm"
 csv_final_dir = os.path.join(base_dir, "csv_final")
@@ -56,7 +56,7 @@ for metric in ["P", "R", "HR", "NDCG"]:
     plt.ylabel(metric)
     plt.grid(True)
     plt.tight_layout()
-    out_file = os.path.join(eval_dir, f"{metric.lower()}_comparison.png")
+    out_file = os.path.join(eval_dir, f"{metric.lower()}_comparison_hop.png")
     plt.savefig(out_file, dpi=200)
     plt.close()
     print(f"Saved plot: {out_file}")
