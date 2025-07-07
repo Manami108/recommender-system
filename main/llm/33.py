@@ -55,7 +55,7 @@ def send_email(subject: str, body: str):
 
 
 # config
-TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset1.jsonl"))
+TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset4.jsonl"))
 MAX_CASES     = int(os.getenv("MAX_CASES", 50)) # Number of test cases to evaluate
 SIM_THRESHOLD = float(os.getenv("SIM_THRESHOLD", 0.95))
 TOPK_LIST     = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20) # K-values for evaluation metrics
@@ -230,7 +230,7 @@ def main() -> None:
 
     # build DataFrame and write to CSV
     metric_df = pd.DataFrame(rows)
-    out_csv   = Path(__file__).parent / "csv1" / "1metrics_bm25_llm.csv"
+    out_csv   = Path(__file__).parent / "csv4" / "4metrics_bm25_llm.csv"
     metric_df.to_csv(out_csv, index=False)
     print(f"\nSaved per‐paragraph metrics to {out_csv}")
 
