@@ -11,7 +11,7 @@ os.makedirs(csv_final_dir, exist_ok=True)
 
 # List of suffixes (final filenames) to merge
 suffixes = [
-    "metrics_rrf_pure_llama.csv",
+    "metrics_rrf_hop1_llm.csv",
 ]
 
 # Merge per suffix across csv1-4, drop failures, then save
@@ -29,12 +29,18 @@ for suffix in suffixes:
         continue
 
     merged = pd.concat(dfs, ignore_index=True)
+    print(merged["rerank_failed"].dtype)
+    print(merged["rerank_failed"].unique())
 
+
+    # Drop rerank failures if that column exists
     # Drop rerank failures if that column exists
     if "rerank_failed" in merged.columns:
         before = len(merged)
-        merged = merged[~merged["rerank_failed"]]
+        mask = merged["rerank_failed"].fillna(False).astype(bool)
+        merged = merged[~mask]
         print(f"{suffix}: Dropped {before - len(merged)} failed rows")
+
 
     out_path = os.path.join(csv_final_dir, suffix)
     merged.to_csv(out_path, index=False)

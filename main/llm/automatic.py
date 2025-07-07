@@ -11,13 +11,13 @@ scripts = [
     # "/home/abhi/Desktop/Manami/recommender-system/main/llm/11.py",
     # "/home/abhi/Desktop/Manami/recommender-system/main/llm/22.py",
     # "/home/abhi/Desktop/Manami/recommender-system/main/llm/33.py",
-    "/home/abhi/Desktop/Manami/recommender-system/main/llm/2-1.py",
+    # "/home/abhi/Desktop/Manami/recommender-system/main/llm/2-1.py",
     # "/home/abhi/Desktop/Manami/recommender-system/main/llm/3-1.py", 
     # "/home/abhi/Desktop/Manami/recommender-system/main/llm/4-1.py",
     "/home/abhi/Desktop/Manami/recommender-system/main/llm/2-2.py", 
-    "/home/abhi/Desktop/Manami/recommender-system/main/llm/3-2.py",
+    # "/home/abhi/Desktop/Manami/recommender-system/main/llm/3-2.py",
     "/home/abhi/Desktop/Manami/recommender-system/main/llm/4-2.py",
-    "/home/abhi/Desktop/Manami/recommender-system/main/llm/5-2.py",
+    # "/home/abhi/Desktop/Manami/recommender-system/main/llm/5-2.py",
 ]
 
 # Loop through each script

@@ -3,12 +3,13 @@ import matplotlib.pyplot as plt
 
 # 1) load all CSVs
 files = [
-    "1metrics_rrf_hop1_llm.csv",
-    "1metrics_rrf_llm_working32.csv",
-    "metrics_rrf_pure_llama.csv",
+    "4metrics_rrf_hop1_llm.csv",
+    "4metrics_rrf_hop3_llm.csv",
+        "4metrics_rrf_llm_working32.csv",
+    # "metrics_rrf_pure_llama.csv",
     # "metrics_rrf_hop10_llm.csv",
 ]
-dfs = [pd.read_csv(f"./csv1/{fn}") for fn in files]
+dfs = [pd.read_csv(f"./csv4/{fn}") for fn in files]
 
 # 2) concatenate
 all_df = pd.concat(dfs, ignore_index=True)
