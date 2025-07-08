@@ -3,6 +3,9 @@
 # generates top-10 paper recommendations for each non-empty paragraph
 # using two reranking methods: (1) RRF + LLM sliding_score and (2) RRF + pure LLaMA scoring,
 # and saves the results (including all original fields plus method, rank, title, DOI, year) to a new CSV.
+from __future__ import annotations
+import faulthandler
+faulthandler.enable(all_threads=True, file=open("fault.log", "w"))
 
 import os
 import json
@@ -24,8 +27,8 @@ from recall_user_study import (
 from rerank_llm import sliding_score, RerankError
 
 # Configuration
-INPUT_JSONL    = Path(os.getenv("INPUT_JSONL", "/home/abhi/Desktop/Manami/recommender-system/datasets/user_studies/manami.jsonl"))
-OUTPUT_CSV     = Path(os.getenv("OUTPUT_CSV", "/home/abhi/Desktop/Manami/recommender-system/datasets/user_studies/manami_recommendations.csv"))
+INPUT_JSONL    = Path(os.getenv("INPUT_JSONL", "/home/abhi/Desktop/Manami/recommender-system/datasets/user_studies/dewa.jsonl"))
+OUTPUT_CSV     = Path(os.getenv("OUTPUT_CSV", "/home/abhi/Desktop/Manami/recommender-system/datasets/user_studies/dewa_recommendations.csv"))
 TOP_K          = int(os.getenv("TOP_K", 15))
 MAX_RRF_CAND   = int(os.getenv("MAX_RRF_CAND", 40))
 LLAMA_MODEL    = os.getenv("LLAMA_MODEL", "meta-llama/Meta-Llama-3.1-8B-Instruct")

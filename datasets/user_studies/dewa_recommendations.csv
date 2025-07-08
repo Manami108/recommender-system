@@ -1,0 +1,61 @@
+﻿name,number,method,rank,title,doi,year
+dewa,1,rrf_llm,1,"This computer responds to user frustration:: Theory, design, and results",,2002
+dewa,1,rrf_llm,2,"A model for computer frustration: the role of instrumental and dispositional factors on incident, session, and post-session frustration and mood",,2006
+dewa,1,rrf_llm,3,Personalized Affective Feedback to Address Students’ Frustration in ITS,,2019
+dewa,1,rrf_llm,4,Exploring causes of frustration for software developers,,2015
+dewa,1,rrf_llm,5,Between frustration and elation: sense of control regulates the lntrinsic motivation for motor learning,,2011
+dewa,1,rrf_llm,6,Automatically Recognizing Facial Indicators of Frustration: A Learning-centric Analysis,,2013
+dewa,1,rrf_llm,7,Source Code Curation Tooling for the Code Forager,,2015
+dewa,1,rrf_llm,8,4D Affect Detection: Improving Frustration Detection in Game-Based Learning with Posture-Based Temporal Data Fusion,,2019
+dewa,1,rrf_llm,9,A Theory-Driven Approach to Predict Frustration in an ITS,,2013
+dewa,1,rrf_llm,10,Understanding the relationships between self-regulated learning and students source code in a computer programming course,,2017
+dewa,1,rrf_llm,11,Solving Code-tracing Problems and its Effect on Code-writing Skills Pertaining to Program Semantics,,2015
+dewa,1,rrf_llm,12,Engaged or Frustrated?: Disambiguating engagement and frustration in search,,2016
+dewa,1,rrf_llm,13,Detection and assistance to students who show frustration in learning of algorithms,,2013
+dewa,1,rrf_llm,14,Severity and impact of computer user frustration: A comparison of student and workplace users,,2006
+dewa,1,rrf_llm,15,A Little Bit of Frustration Can Go a Long Way,,2017
+dewa,1,rrf_pure_llama,1,Detection and assistance to students who show frustration in learning of algorithms,,2013
+dewa,1,rrf_pure_llama,2,"Sequences of Frustration and Confusion, and Learning.",,2013
+dewa,1,rrf_pure_llama,3,Personalized Affective Feedback to Address Students’ Frustration in ITS,,2019
+dewa,1,rrf_pure_llama,4,"More confusion and frustration, better learning: The impact of erroneous examples",,2019
+dewa,1,rrf_pure_llama,5,Patterns in Poor Learning Engagement in Students While They Are Solving Mathematics Exercises in an Affective Tutoring System Related to Frustration,,2018
+dewa,1,rrf_pure_llama,6,Solving Code-tracing Problems and its Effect on Code-writing Skills Pertaining to Program Semantics,,2015
+dewa,1,rrf_pure_llama,7,Between frustration and elation: sense of control regulates the lntrinsic motivation for motor learning,,2011
+dewa,1,rrf_pure_llama,8,A study of the influence of code-tracing problems on code-writing skills,,2013
+dewa,1,rrf_pure_llama,9,Early Prediction of Student Frustration,,2007
+dewa,1,rrf_pure_llama,10,Automatically Recognizing Facial Indicators of Frustration: A Learning-centric Analysis,,2013
+dewa,1,rrf_pure_llama,11,Engaged or Frustrated?: Disambiguating engagement and frustration in search,,2016
+dewa,1,rrf_pure_llama,12,Differentiating in-Game Frustration from at-Game Frustration using Touch Pressure,,2016
+dewa,1,rrf_pure_llama,13,Predicting searcher frustration,,2010
+dewa,1,rrf_pure_llama,14,The impact of frustration-mitigating messages delivered by an interface agent,,2005
+dewa,1,rrf_pure_llama,15,A Theory-Driven Approach to Predict Frustration in an ITS,,2013
+dewa,2,rrf_llm,1,A Complete Scheme of Spatially Categorized Glyph Recognition for the Transliteration of Balinese Palm Leaf Manuscripts,,2017
+dewa,2,rrf_llm,2,The composition approach non-QWERTY keyboard for Balinese script,,2014
+dewa,2,rrf_llm,3,A Novel Image Classification Approach via Dense-MobileNet Models,,2020
+dewa,2,rrf_llm,4,Digital Preservation of Cultural Heritage: Balinese Kulkul Artefact and Practices,,2016
+dewa,2,rrf_llm,5,Moving convolutional neural networks to embedded systems: the alexnet and VGG-16 case,,2018
+dewa,2,rrf_llm,6,Parametric Balinese rumah: Procedural modeling of traditional Balinese architecture,,2013
+dewa,2,rrf_llm,7,Thin MobileNet: An Enhanced MobileNet Architecture,,2019
+dewa,2,rrf_llm,8,Face Recognition Based on The Improved MobileNet,,2019
+dewa,2,rrf_llm,9,Knowledge Representation and Phonological Rules for the Automatic Transliteration of Balinese Script on Palm Leaf Manuscript,,2018
+dewa,2,rrf_llm,10,Study on feature extraction methods for character recognition of Balinese script on palm leaf manuscript images,,2016
+dewa,2,rrf_llm,11,Translating Verbally Communicated Local Geographic Knowledge Using Semantic Technologies: A Balinese Example,,2017
+dewa,2,rrf_llm,12,The Development of an Android-Based Anggah-Ungguhing Balinese Language Dictionary,,2018
+dewa,2,rrf_llm,13,Training Schemes for the Transliteration of the Balinese Script Into the Latin Script on Palm Leaf Manuscript Images,,2018
+dewa,2,rrf_llm,14,Implementation of the String Matching Method on Anggah-Ungguhing Balinese Language Dictionary,,2020
+dewa,2,rrf_llm,15,Fisher Pruning of Deep Nets for Facial Trait Classification.,,2018
+dewa,2,rrf_pure_llama,1,Digital Preservation of Cultural Heritage: Balinese Kulkul Artefact and Practices,,2016
+dewa,2,rrf_pure_llama,2,The composition approach non-QWERTY keyboard for Balinese script,,2014
+dewa,2,rrf_pure_llama,3,The Development of an Android-Based Anggah-Ungguhing Balinese Language Dictionary,,2018
+dewa,2,rrf_pure_llama,4,Parametric Balinese rumah: Procedural modeling of traditional Balinese architecture,,2013
+dewa,2,rrf_pure_llama,5,Knowledge Representation and Phonological Rules for the Automatic Transliteration of Balinese Script on Palm Leaf Manuscript,,2018
+dewa,2,rrf_pure_llama,6,Implementation of the String Matching Method on Anggah-Ungguhing Balinese Language Dictionary,,2020
+dewa,2,rrf_pure_llama,7,AMADI_LontarSet: The First Handwritten Balinese Palm Leaf Manuscripts Dataset,,2016
+dewa,2,rrf_pure_llama,8,ICFHR2016 Competition on the Analysis of Handwritten Text in Images of Balinese Palm Leaf Manuscripts,,2016
+dewa,2,rrf_pure_llama,9,Implementation of Tree Structure and Recursive Algorithm for Balinese Traditional Snack Recipe on Android Based Application,,2016
+dewa,2,rrf_pure_llama,10,The Postures and Movements of Balinese Dance,,2017
+dewa,2,rrf_pure_llama,11,A Complete Scheme of Spatially Categorized Glyph Recognition for the Transliteration of Balinese Palm Leaf Manuscripts,,2017
+dewa,2,rrf_pure_llama,12,The Augmented Reality Story Book Project: A Collection of Balinese Miths and Legends,,2015
+dewa,2,rrf_pure_llama,13,A Semantically-Enriched Digital Portal for the Digital Preservation of Cultural Heritage with Community Participation,,2018
+dewa,2,rrf_pure_llama,14,Translating Verbally Communicated Local Geographic Knowledge Using Semantic Technologies: A Balinese Example,,2017
+dewa,2,rrf_pure_llama,15,Training Schemes for the Transliteration of the Balinese Script Into the Latin Script on Palm Leaf Manuscript Images,,2018
