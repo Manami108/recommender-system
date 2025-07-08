@@ -18,7 +18,7 @@ from recall import (
     fetch_metadata,
     embed,
 )
-from rerank_llm import rerank_batch, RerankError  # returns DataFrame with pid, score
+from rerank_llm import sliding_score, RerankError  # returns DataFrame with pid, score
 import matplotlib.pyplot as plt         
 
 
@@ -55,7 +55,7 @@ def send_email(subject: str, body: str):
 
 
 # config
-TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset2.jsonl"))
+TESTSET_PATH  = Path(os.getenv("TESTSET_PATH", "/home/abhi/Desktop/Manami/recommender-system/datasets/testset1.jsonl"))
 MAX_CASES     = int(os.getenv("MAX_CASES", 50)) # Number of test cases to evaluate
 SIM_THRESHOLD = float(os.getenv("SIM_THRESHOLD", 0.95))
 TOPK_LIST     = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20) # K-values for evaluation metrics
@@ -103,13 +103,12 @@ def evaluate_case(
         merged = merged[merged["year"] < target_year]
     if merged.empty:
         raise ValueError("Empty candidate set after filtering by year and abstract")
-    
+    rerank_failed = False
     # Ask the LLM to rerank your 20 candidates by relevance to the paragraph.
     try:
-        llm_df = rerank_batch(
+        llm_df = sliding_score(
             paragraph,
-            merged[["pid", "title", "abstract"]],
-            k=40,                   # let the LLM see / rank all 20
+            merged[["pid", "title", "abstract"]],                 # let the LLM see / rank all 20
         )                           # → columns: pid, score
 
         # add BM25 score for deterministic tie-breaking
@@ -174,6 +173,7 @@ def evaluate_case(
         idcg = sum(1 / np.log2(i + 2) for i in range(min(n_rel, k)))
         ndcg = (dcg / idcg) if idcg else 0.0
         out.update({f"P@{k}": p_at_k, f"HR@{k}": hr_at_k, f"R@{k}": r_at_k, f"NDCG@{k}": ndcg})
+    out["rerank_failed"] = rerank_failed
     return out
 
 
@@ -230,7 +230,7 @@ def main() -> None:
 
     # build DataFrame and write to CSV
     metric_df = pd.DataFrame(rows)
-    out_csv   = Path(__file__).parent / "csv2" / "2metrics_bm25_llm.csv"
+    out_csv   = Path(__file__).parent / "csv1" / "1metrics_bm25_llm.csv"
     metric_df.to_csv(out_csv, index=False)
     print(f"\nSaved per‐paragraph metrics to {out_csv}")
 

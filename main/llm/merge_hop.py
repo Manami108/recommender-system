@@ -3,9 +3,9 @@ import matplotlib.pyplot as plt
 
 # 1) load all CSVs
 files = [
-    "4metrics_rrf_hop1_llm.csv",
-    "4metrics_rrf_hop3_llm.csv",
-        "4metrics_rrf_llm_working32.csv",
+    "1metrics_rrf_hop1_llm.csv",
+    "2metrics_rrf_hop3_llm.csv",
+        # "4metrics_rrf_llm_working32.csv",
     # "metrics_rrf_pure_llama.csv",
     # "metrics_rrf_hop10_llm.csv",
 ]
