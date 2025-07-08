@@ -1,0 +1,31 @@
+﻿name,number,method,rank,title,doi,year
+fajar,1,rrf_llm_pure ,1,High-Quality Facial Photo-Sketch Synthesis Using Multi-Adversarial Networks,,2017
+fajar,1,rrf_llm_pure ,2,An Angry Birds Level Generator with Rube Goldberg Machine Mechanisms,,2019
+fajar,1,rrf_llm_pure ,3,Identity-Aware CycleGAN for Face Photo-Sketch Synthesis and Recognition,,2020
+fajar,1,rrf_llm_pure ,4,Tanager: A Generator of Feasible and Engaging Levels for Angry Birds,,2018
+fajar,1,rrf_llm_pure ,5,Procedural generation of angry birds fun levels using pattern-struct and preset-model,,2017
+fajar,1,rrf_llm_pure ,6,The 2017 AIBIRDS Level Generation Competition,,2019
+fajar,1,rrf_llm_pure ,7,Improving Face Sketch Recognition via Adversarial Sketch-Photo Transformation,,2019
+fajar,1,rrf_llm_pure ,8,A search-based approach for generating Angry Birds levels,,2014
+fajar,1,rrf_llm_pure ,9,Generative Adversarial Networks for Image-to-Image Translation on Multi-Contrast MR Images - A Comparison of CycleGAN and UNIT.,,2018
+fajar,1,rrf_llm_pure ,10,Interactive Sketch & Fill: Multiclass Sketch-to-Image Translation,,2019
+fajar,1,rrf_llm_pure ,11,High-Quality Facial Photo-Sketch Synthesis Using Multi-Adversarial Networks,,2018
+fajar,1,rrf_llm_pure ,12,Auto-painter: Cartoon Image Generation from Sketch by Using Conditional Generative Adversarial Networks.,,2017
+fajar,1,rrf_llm_pure ,13,"CycleGAN, a Master of Steganography",,2017
+fajar,1,rrf_llm_pure ,14,Promoting Emotional Well-Being with Angry-Birds-like Gameplay on Pixel Image Levels,,2019
+fajar,1,rrf_llm_pure ,15,Generating Photographic Faces From the Sketch Guided by Attribute Using GAN,,2019
+fajar,2,rrf_llm_pure ,1,Super-resolution from a single image,,2009
+fajar,2,rrf_llm_pure ,2,SinGAN: Learning a Generative Model from a Single Natural Image,,2019
+fajar,2,rrf_llm_pure ,3,Internal statistics of a single natural image,,2011
+fajar,2,rrf_llm_pure ,4,PacGAN: The power of two samples in generative adversarial networks,,2018
+fajar,2,rrf_llm_pure ,5,StackGAN++: Realistic Image Synthesis with Stacked Generative Adversarial Networks,,2017
+fajar,2,rrf_llm_pure ,6,PacGAN: The power of two samples in generative adversarial networks,,2017
+fajar,2,rrf_llm_pure ,7,StackGAN++: Realistic Image Synthesis with Stacked Generative Adversarial Networks,,2019
+fajar,2,rrf_llm_pure ,8,Maintaining Natural Image Statistics with the Contextual Loss,,2018
+fajar,2,rrf_llm_pure ,9,Learning to Maintain Natural Image Statistics.,,2018
+fajar,2,rrf_llm_pure ,10,Triple Generative Adversarial Nets,,2017
+fajar,2,rrf_llm_pure ,11,Triple Generative Adversarial Nets,,2017
+fajar,2,rrf_llm_pure ,12,Maintaining Natural Image Statistics with the Contextual Loss,,2018
+fajar,2,rrf_llm_pure ,13,Image patch modeling in a light field,,2014
+fajar,2,rrf_llm_pure ,14,On the Effectiveness of Generative Adversarial Networks as HEp-2 Image Augmentation Tool,,2019
+fajar,2,rrf_llm_pure ,15,"Gaussian Mixture Generative Adversarial Networks for Diverse Datasets, and the Unsupervised Clustering of Images.",,2018
