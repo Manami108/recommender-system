@@ -1,0 +1,31 @@
+﻿name,number,method,rank,title,doi,year
+fajar,1,rrf_llm,1,Identity-Aware CycleGAN for Face Photo-Sketch Synthesis and Recognition,,2020
+fajar,1,rrf_llm,2,Tanager: A Generator of Feasible and Engaging Levels for Angry Birds,,2018
+fajar,1,rrf_llm,3,Generating Photographic Faces From the Sketch Guided by Attribute Using GAN,,2019
+fajar,1,rrf_llm,4,"Generating varied, stable and solvable levels for angry birds style physics games",,2017
+fajar,1,rrf_llm,5,Magic pencil: generalized sketch inversion via generative adversarial nets,,2016
+fajar,1,rrf_llm,6,Attribute-Guided Face Generation Using Conditional CycleGAN,,2018
+fajar,1,rrf_llm,7,Evolving Levels for General Games Using Deep Convolutional Generative Adversarial Networks,,2019
+fajar,1,rrf_llm,8,Improving Face Sketch Recognition via Adversarial Sketch-Photo Transformation,,2019
+fajar,1,rrf_llm,9,Unpaired Image-to-Sketch Translation Network for Sketch Synthesis,,2019
+fajar,1,rrf_llm,10,Unpaired Brain MR-to-CT Synthesis using a Structure-Constrained CycleGAN.,,2018
+fajar,1,rrf_llm,11,Unpaired Brain MR-to-CT Synthesis Using a Structure-Constrained CycleGAN,,2018
+fajar,1,rrf_llm,12,Interactive Sketch & Fill: Multiclass Sketch-to-Image Translation,,2019
+fajar,1,rrf_llm,13,High-Quality Facial Photo-Sketch Synthesis Using Multi-Adversarial Networks,,2017
+fajar,1,rrf_llm,14,Sketch-to-Image Generation Using Deep Contextual Completion.,,2017
+fajar,1,rrf_llm,15,A procedural procedural level generator generator,,2012
+fajar,2,rrf_llm,1,SinGAN: Learning a Generative Model from a Single Natural Image,,2019
+fajar,2,rrf_llm,2,StackGAN++: Realistic Image Synthesis with Stacked Generative Adversarial Networks,,2019
+fajar,2,rrf_llm,3,"Gaussian Mixture Generative Adversarial Networks for Diverse Datasets, and the Unsupervised Clustering of Images.",,2018
+fajar,2,rrf_llm,4,Internal statistics of a single natural image,,2011
+fajar,2,rrf_llm,5,Learning to Maintain Natural Image Statistics.,,2018
+fajar,2,rrf_llm,6,Super-resolution from a single image,,2009
+fajar,2,rrf_llm,7,Deep Image Super Resolution via Natural Image Priors,,2018
+fajar,2,rrf_llm,8,Maintaining Natural Image Statistics with the Contextual Loss,,2018
+fajar,2,rrf_llm,9,MaskGAN: Better Text Generation via Filling in the ______,,2018
+fajar,2,rrf_llm,10,What Are the Invariant Occlusive Components of Image Patches? A Probabilistic Generative Approach,,2013
+fajar,2,rrf_llm,11,Multi-Agent Diverse Generative Adversarial Networks,,2017
+fajar,2,rrf_llm,12,PacGAN: The power of two samples in generative adversarial networks,,2017
+fajar,2,rrf_llm,13,Maintaining Natural Image Statistics with the Contextual Loss,,2018
+fajar,2,rrf_llm,14,Image patch modeling in a light field,,2014
+fajar,2,rrf_llm,15,PacGAN: The power of two samples in generative adversarial networks,,2018
