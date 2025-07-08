@@ -1,0 +1,61 @@
+﻿name,number,method,rank,title,doi,year
+fajar,1,rrf_llm,1,High-Quality Facial Photo-Sketch Synthesis Using Multi-Adversarial Networks,,2017
+fajar,1,rrf_llm,2,Cross-modality image synthesis from unpaired data using CycleGAN: Effects of gradient consistency loss and training data size,,2018
+fajar,1,rrf_llm,3,Evolving Levels for General Games Using Deep Convolutional Generative Adversarial Networks,,2019
+fajar,1,rrf_llm,4,"Generating varied, stable and solvable levels for angry birds style physics games",,2017
+fajar,1,rrf_llm,5,Tanager: A Generator of Feasible and Engaging Levels for Angry Birds,,2018
+fajar,1,rrf_llm,6,Interactive Sketch & Fill: Multiclass Sketch-to-Image Translation,,2019
+fajar,1,rrf_llm,7,Auto-painter: Cartoon Image Generation from Sketch by Using Conditional Generative Adversarial Networks.,,2017
+fajar,1,rrf_llm,8,Improving Face Sketch Recognition via Adversarial Sketch-Photo Transformation,,2019
+fajar,1,rrf_llm,9,Generating Photographic Faces From the Sketch Guided by Attribute Using GAN,,2019
+fajar,1,rrf_llm,10,Magic pencil: generalized sketch inversion via generative adversarial nets,,2016
+fajar,1,rrf_llm,11,Procedural generation of angry birds fun levels using pattern-struct and preset-model,,2017
+fajar,1,rrf_llm,12,Sketch-pix2seq: a Model to Generate Sketches of Multiple Categories.,,2017
+fajar,1,rrf_llm,13,Generative Adversarial Networks for Image-to-Image Translation on Multi-Contrast MR Images - A Comparison of CycleGAN and UNIT.,,2018
+fajar,1,rrf_llm,14,Unpaired Image-to-Sketch Translation Network for Sketch Synthesis,,2019
+fajar,1,rrf_llm,15,Unpaired Brain MR-to-CT Synthesis Using a Structure-Constrained CycleGAN,,2018
+fajar,1,rrf_pure_llama,1,High-Quality Facial Photo-Sketch Synthesis Using Multi-Adversarial Networks,,2017
+fajar,1,rrf_pure_llama,2,An Angry Birds Level Generator with Rube Goldberg Machine Mechanisms,,2019
+fajar,1,rrf_pure_llama,3,Identity-Aware CycleGAN for Face Photo-Sketch Synthesis and Recognition,,2020
+fajar,1,rrf_pure_llama,4,Tanager: A Generator of Feasible and Engaging Levels for Angry Birds,,2018
+fajar,1,rrf_pure_llama,5,Procedural generation of angry birds fun levels using pattern-struct and preset-model,,2017
+fajar,1,rrf_pure_llama,6,The 2017 AIBIRDS Level Generation Competition,,2019
+fajar,1,rrf_pure_llama,7,Improving Face Sketch Recognition via Adversarial Sketch-Photo Transformation,,2019
+fajar,1,rrf_pure_llama,8,A search-based approach for generating Angry Birds levels,,2014
+fajar,1,rrf_pure_llama,9,Generative Adversarial Networks for Image-to-Image Translation on Multi-Contrast MR Images - A Comparison of CycleGAN and UNIT.,,2018
+fajar,1,rrf_pure_llama,10,Interactive Sketch & Fill: Multiclass Sketch-to-Image Translation,,2019
+fajar,1,rrf_pure_llama,11,High-Quality Facial Photo-Sketch Synthesis Using Multi-Adversarial Networks,,2018
+fajar,1,rrf_pure_llama,12,Auto-painter: Cartoon Image Generation from Sketch by Using Conditional Generative Adversarial Networks.,,2017
+fajar,1,rrf_pure_llama,13,"CycleGAN, a Master of Steganography",,2017
+fajar,1,rrf_pure_llama,14,Promoting Emotional Well-Being with Angry-Birds-like Gameplay on Pixel Image Levels,,2019
+fajar,1,rrf_pure_llama,15,Generating Photographic Faces From the Sketch Guided by Attribute Using GAN,,2019
+fajar,2,rrf_llm,1,SinGAN: Learning a Generative Model from a Single Natural Image,,2019
+fajar,2,rrf_llm,2,Internal statistics of a single natural image,,2011
+fajar,2,rrf_llm,3,Learning to Maintain Natural Image Statistics.,,2018
+fajar,2,rrf_llm,4,Maintaining Natural Image Statistics with the Contextual Loss,,2018
+fajar,2,rrf_llm,5,Maintaining Natural Image Statistics with the Contextual Loss,,2018
+fajar,2,rrf_llm,6,MGAN: Training Generative Adversarial Nets with Multiple Generators,,2018
+fajar,2,rrf_llm,7,Multi-Agent Diverse Generative Adversarial Networks,,2017
+fajar,2,rrf_llm,8,A Generative Model of Natural Texture Surrogates,,2015
+fajar,2,rrf_llm,9,Super-resolution from a single image,,2009
+fajar,2,rrf_llm,10,StackGAN++: Realistic Image Synthesis with Stacked Generative Adversarial Networks,,2019
+fajar,2,rrf_llm,11,StackGAN++: Realistic Image Synthesis with Stacked Generative Adversarial Networks,,2017
+fajar,2,rrf_llm,12,PacGAN: The power of two samples in generative adversarial networks,,2017
+fajar,2,rrf_llm,13,Image patch modeling in a light field,,2014
+fajar,2,rrf_llm,14,Multi-agent Diverse Generative Adversarial Networks,,2018
+fajar,2,rrf_llm,15,Deep Image Super Resolution via Natural Image Priors,,2018
+fajar,2,rrf_pure_llama,1,Super-resolution from a single image,,2009
+fajar,2,rrf_pure_llama,2,SinGAN: Learning a Generative Model from a Single Natural Image,,2019
+fajar,2,rrf_pure_llama,3,Internal statistics of a single natural image,,2011
+fajar,2,rrf_pure_llama,4,PacGAN: The power of two samples in generative adversarial networks,,2018
+fajar,2,rrf_pure_llama,5,StackGAN++: Realistic Image Synthesis with Stacked Generative Adversarial Networks,,2017
+fajar,2,rrf_pure_llama,6,PacGAN: The power of two samples in generative adversarial networks,,2017
+fajar,2,rrf_pure_llama,7,StackGAN++: Realistic Image Synthesis with Stacked Generative Adversarial Networks,,2019
+fajar,2,rrf_pure_llama,8,Maintaining Natural Image Statistics with the Contextual Loss,,2018
+fajar,2,rrf_pure_llama,9,Learning to Maintain Natural Image Statistics.,,2018
+fajar,2,rrf_pure_llama,10,Triple Generative Adversarial Nets,,2017
+fajar,2,rrf_pure_llama,11,Triple Generative Adversarial Nets,,2017
+fajar,2,rrf_pure_llama,12,Maintaining Natural Image Statistics with the Contextual Loss,,2018
+fajar,2,rrf_pure_llama,13,Image patch modeling in a light field,,2014
+fajar,2,rrf_pure_llama,14,On the Effectiveness of Generative Adversarial Networks as HEp-2 Image Augmentation Tool,,2019
+fajar,2,rrf_pure_llama,15,"Gaussian Mixture Generative Adversarial Networks for Diverse Datasets, and the Unsupervised Clustering of Images.",,2018
