@@ -27,8 +27,8 @@ from recall_user_study import (
 from rerank_llm import sliding_score, RerankError
 
 # Configuration
-INPUT_JSONL    = Path(os.getenv("INPUT_JSONL", "/home/abhi/Desktop/Manami/recommender-system/datasets/user_studies/dewa.jsonl"))
-OUTPUT_CSV     = Path(os.getenv("OUTPUT_CSV", "/home/abhi/Desktop/Manami/recommender-system/datasets/user_studies/dewa_recommendations.csv"))
+INPUT_JSONL    = Path(os.getenv("INPUT_JSONL", "/home/abhi/Desktop/Manami/recommender-system/datasets/user_studies/fajar.jsonl"))
+OUTPUT_CSV     = Path(os.getenv("OUTPUT_CSV", "/home/abhi/Desktop/Manami/recommender-system/datasets/user_studies/fajar_recommendations.csv"))
 TOP_K          = int(os.getenv("TOP_K", 15))
 MAX_RRF_CAND   = int(os.getenv("MAX_RRF_CAND", 40))
 LLAMA_MODEL    = os.getenv("LLAMA_MODEL", "meta-llama/Meta-Llama-3.1-8B-Instruct")
