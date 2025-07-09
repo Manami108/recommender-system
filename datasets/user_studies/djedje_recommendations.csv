@@ -1,0 +1,31 @@
+﻿name,number,method,rank,title,doi,year
+djedje,1,rrf_llm,1,Representation Learning on Graphs: Methods and Applications.,,2017
+djedje,1,rrf_llm,2,Learning Deep Generative Models of Graphs,,2018
+djedje,1,rrf_llm,3,Large-scale graph representation learning,,2017
+djedje,1,rrf_llm,4,Generative Adversarial Graph Representation Learning in Hyperbolic Space,,2018
+djedje,1,rrf_llm,5,Neuro-symbolic representation learning on biological knowledge graphs,,2017
+djedje,1,rrf_llm,6,Network2Vec Learning Node Representation Based on Space Mapping in Networks.,,2019
+djedje,1,rrf_llm,7,Node Representation Learning for Multiple Networks: The Case of Graph Alignment.,,2018
+djedje,1,rrf_llm,8,Graphs in machine learning: an introduction,,2015
+djedje,1,rrf_llm,9,Exploring the Semantic Content of Unsupervised Graph Embeddings: An Empirical Study.,,2018
+djedje,1,rrf_llm,10,Graphs in machine learning: an introduction,,2015
+djedje,1,rrf_llm,11,Fast and Scalable Analysis of Massive Social Graphs,,2011
+djedje,1,rrf_llm,12,PGR: A Graph Repository of Protein 3D-Structures.,,2016
+djedje,1,rrf_llm,13,Network2Vec: Learning Node Representation Based on Space Mapping in Networks,,2019
+djedje,1,rrf_llm,14,A machine learning approach to edge type inference in Internet AS graphs,,2016
+djedje,1,rrf_llm,15,Sub2Vec: Feature Learning for Subgraphs,,2018
+djedje,2,rrf_llm,1,Distributed Representations of Words and Phrases and their Compositionality,,2013
+djedje,2,rrf_llm,2,Distributed Representations of Words and Phrases and their Compositionality,,2013
+djedje,2,rrf_llm,3,SubGram: Extending Skip-gram Word Representation with Substrings.,,2018
+djedje,2,rrf_llm,4,A Probabilistic Model for Learning Multi-Prototype Word Embeddings,,2014
+djedje,2,rrf_llm,5,"Unsupervised Low-Dimensional Vector Representations for Words, Phrases and Text that are Transparent, Scalable, and produce Similarity Metrics that are Complementary to Neural Embeddings",,2018
+djedje,2,rrf_llm,6,Semantic Representations of Word Senses and Concepts.,,2016
+djedje,2,rrf_llm,7,Vector Space Models of Word Meaning and Phrase Meaning: A Survey,,2012
+djedje,2,rrf_llm,8,Breaking Sticks and Ambiguities with Adaptive Skip-gram,,2016
+djedje,2,rrf_llm,9,On Continuous Space Word Representations as Input of LSTM Language Model,,2015
+djedje,2,rrf_llm,10,A Simple and Efficient Method To Generate Word Sense Representations,,2014
+djedje,2,rrf_llm,11,Handling Missing Words by Mapping Across Word Vector Representations,,2016
+djedje,2,rrf_llm,12,Co-learning of Word Representations and Morpheme Representations,,2014
+djedje,2,rrf_llm,13,Improving short text classification by learning vector representations of both words and hidden topics,,2016
+djedje,2,rrf_llm,14,"""The Sum of Its Parts"": Joint Learning of Word and Phrase Representations with Autoencoders",,2015
+djedje,2,rrf_llm,15,A Simple and Efficient Method to Generate Word Sense Representations,,2015

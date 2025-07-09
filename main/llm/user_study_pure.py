@@ -24,8 +24,8 @@ from recall_user_study import (
 )
 
 # Config
-INPUT_JSONL = Path(os.getenv("INPUT_JSONL", "/home/abhi/Desktop/Manami/recommender-system/datasets/user_studies/dewa.jsonl"))
-OUTPUT_CSV  = Path(os.getenv("OUTPUT_CSV", "/home/abhi/Desktop/Manami/recommender-system/datasets/user_studies/dewa_recommendations2.csv"))
+INPUT_JSONL = Path(os.getenv("INPUT_JSONL", "/home/abhi/Desktop/Manami/recommender-system/datasets/user_studies/djedje.jsonl"))
+OUTPUT_CSV  = Path(os.getenv("OUTPUT_CSV", "/home/abhi/Desktop/Manami/recommender-system/datasets/user_studies/djedje_recommendations2.csv"))
 TOP_K       = int(os.getenv("TOP_K", 15))
 MAX_RRF_CAND= int(os.getenv("MAX_RRF_CAND", 40))
 # LLaMA model & TOKENIZER
