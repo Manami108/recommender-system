@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # === CONFIGURATION ===
-INCLUDE_METHODS = ["metrics_bm25_llm", "metrics_bm25", "metrics_rrf_pure_llama", "metrics_rrf_llm_working32", "metrics_rrf" ]  # ← just fill in the ones you want
+INCLUDE_METHODS = ["metrics_rrf_llm_working32", "metrics_rrf_hop3_llm", "metrics_rrf_hop1_llm"]  # ← just fill in the ones you want
 
 base_dir      = "/home/abhi/Desktop/Manami/recommender-system/main/llm"
 csv_final_dir = os.path.join(base_dir, "csv_final")
