@@ -11,7 +11,7 @@ os.makedirs(csv_final_dir, exist_ok=True)
 
 # List of suffixes (final filenames) to merge
 suffixes = [
-    "metrics_rrf_hop1_llm.csv",
+    "metrics_bm25_llm.csv",
 ]
 
 # Merge per suffix across csv1-4, drop failures, then save
