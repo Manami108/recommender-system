@@ -1,22 +1,18 @@
-## Draft for Conference
-https://www.overleaf.com/project/68317ee77bc2d9cfe0cf412e
+# INSPIRE — Context-Aware Scholarly Paper Recommendation (Overview)
 
-## Draft (Word version)
-https://docs.google.com/document/d/1oCDwL9tWEbsL7TUPOpL7cG2EbPaNwulRCVhUCcJNR54/edit?usp=sharing
+**INSPIRE** treats a **draft paragraph** as a real-time signal of **evolving research intent**.  
+It combines **hybrid retrieval** (BM25 + SciBERT + RRF), **multi-hop reasoning** on a heterogeneous **knowledge graph (KG)**, and a lightweight **LLM reranker** to surface both directly relevant and *bridge* papers.
 
-## Ideas
-https://docs.google.com/document/d/1w6oR8HBcd2USkIyLxnu0ILzq_3Q6FVjpHXXyZW3aknA/edit?hl=JA&tab=t.0
+## Key Ideas
+- **Writing-as-Thinking:** draft text ≈ evolving intent (planning ↔ translating ↔ reviewing).
+- **Hybrid Retrieval:** four sources → full-paragraph BM25, full-paragraph embedding (SciBERT), chunk BM25, chunk embedding → fused by **RRF (k=60)**.
+- **KG Reasoning:** one-hop **topic/FoS** and **citation** expansions; simple weighting (topic/FoS co-neighbor + citation indicator) to form expanded set \(C'\).
+- **LLM Reranking:** ranks \(C'\) by contextual fit to the draft; candidates remain grounded in the corpus (no generation of new papers).
 
-## Experimental Protocol
-https://docs.google.com/document/d/10WN7Q7yhme27JXIMy7q-j8Hbx9Amyt1D6Aol2LYlTvo/edit?tab=t.0
+Data Prep (Brief)
+- Corpus: DBLP v12 (papers + citations).
+- Embeddings: SciBERT on title+abstract.
+- Topics: BERTopic → one topic label / paper.
+- KG: Neo4j with nodes: paper, topic, fos; edges: cites, has_topic, has_fos.
 
-## User Study
-https://docs.google.com/forms/d/1nPCiUVW8pXLYXelErhjDxIV6xZRkm2OlTJAA1tlCwLk/edit?hl=ja&pli=1
-
-## Approach
-1) Sliding window chunking based on token
-2) BM25 (TFiDF-like back of words base) and embeding search -> Reciprocal Rank Fusion (RRF scoring) -> cancdidate retrievals
-3) 2 hop reasoning over citation edges and keywords and topics (should i do that?)
-4) reranking based on llm
-5) Precision, Recall, Hit Rate, NDCG based evaluations
-
+To be continue... (It will be updated soon!)
