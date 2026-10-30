@@ -153,6 +153,18 @@ The scripts currently use a Llama 3.1 tokenizer even in some non-LLM evaluations
 
 Future improvements include a reproducible configuration and setup process, stronger graph-expansion experiments, and broader human-centered evaluation of recommendation usefulness during writing.
 
-## License
 
-This project is released under the [MIT License](LICENSE).
+## Publication
+
+This project is associated with our peer-reviewed conference paper:
+
+**INSPIRE: A System that Models Authorial Intent for Scholarly Paper Recommendation**
+
+Manami Yano, Didier Gohourou, Valentinus Roby Hananto, and Victor Kryssanov.
+
+*9th International Conference on Natural Language Processing and Information Retrieval (NLPIR 2025).* Springer, Lecture Notes in Networks and Systems, Vol. 1904, pp. 712–726, 2026.
+
+**Paper:** https://doi.org/10.1007/978-3-032-20897-2_50
+
+If you use this work in your research, please cite the paper above.
+
