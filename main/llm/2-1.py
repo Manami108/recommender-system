@@ -33,10 +33,12 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 def send_email(subject: str, body: str):
-    sender_email = "manakokko25@gmail.com"
-    receiver_email = "manakokko25@gmail.com"
-    password = "***REMOVED***"
-    
+    sender_email = os.getenv("SMTP_EMAIL", "")
+    receiver_email = os.getenv("SMTP_RECIPIENT", sender_email)
+    password = os.getenv("SMTP_APP_PASSWORD", "")
+    if not sender_email or not password:
+        print("SMTP credentials are not configured; skipping email notification.")
+        return
     # Gmail: use 'smtp.gmail.com', port 587
     # Outlook: 'smtp.office365.com', port 587
     # Others: Check your provider's SMTP server & port

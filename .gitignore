@@ -176,3 +176,11 @@ csv4
 
 /datasets/user_study.jsonl
 /datasets/user_study_recommendations.csv
+
+# Local secrets and credentials
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+secrets*.json

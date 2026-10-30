@@ -18,7 +18,7 @@ from sentence_transformers import SentenceTransformer
 # Neo4j
 _NEO4J_URI  = os.getenv("NEO4J_URI",  "bolt://localhost:7687")
 _NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
-_NEO4J_PASS = os.getenv("NEO4J_PASS", "***REMOVED***")
+_NEO4J_PASS = os.environ["NEO4J_PASS"]
 
 # Index names
 VECTOR_INDEX   = "paper_vec"

@@ -27,10 +27,12 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 def send_email(subject: str, body: str):
-    sender_email = "manakokko25@gmail.com"
-    receiver_email = "manakokko25@gmail.com"
-    password = "***REMOVED***"
-    
+    sender_email = os.getenv("SMTP_EMAIL", "")
+    receiver_email = os.getenv("SMTP_RECIPIENT", sender_email)
+    password = os.getenv("SMTP_APP_PASSWORD", "")
+    if not sender_email or not password:
+        print("SMTP credentials are not configured; skipping email notification.")
+        return
     # Gmail: use 'smtp.gmail.com', port 587
     # Outlook: 'smtp.office365.com', port 587
     # Others: Check your provider's SMTP server & port
@@ -63,7 +65,7 @@ TOPK_LIST     = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 
 # Neo4j connection
 _NEO4J_URI  = os.getenv("NEO4J_URI",  "bolt://localhost:7687")
 _NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
-_NEO4J_PASS = os.getenv("NEO4J_PASS", "secret")
+_NEO4J_PASS = os.environ["NEO4J_PASS"]
 _driver     = GraphDatabase.driver(_NEO4J_URI, auth=(_NEO4J_USER, _NEO4J_PASS))
 
 # Tokenizer for chunking

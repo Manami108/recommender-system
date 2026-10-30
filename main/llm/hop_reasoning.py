@@ -7,7 +7,7 @@ driver = GraphDatabase.driver(
     os.getenv("NEO4J_URI", "bolt://localhost:7687"),
     auth=(
         os.getenv("NEO4J_USER", "neo4j"),
-        os.getenv("NEO4J_PASS", "***REMOVED***")
+        os.environ["NEO4J_PASS"]
     )
 )
 
